@@ -46,6 +46,11 @@ type
     procedure ShadowShaderApply(Shader: TGLCustomGLSLShader);
     procedure PrepareShadowMappingRender(Sender: TObject;
       var rci: TRenderContextInfo);
+    procedure ShadowShaderInitialize(Shader: TGLCustomGLSLShader);
+    procedure ShadowFBORendererBeforeRender(Sender: TObject;
+      var rci: TRenderContextInfo);
+    procedure ShadowFBORendererAfterRender(Sender: TObject;
+      var rci: TRenderContextInfo);
 	private
     FBiasMatrix: TMatrix;
     FLightModelViewMatrix: TMatrix;
@@ -185,11 +190,47 @@ begin
   FEyeToLightMatrix := MatrixMultiply(FEyeToLightMatrix, FBiasMatrix);
 end;
 
+procedure TMainForm.ShadowFBORendererAfterRender(Sender: TObject; var rci: TRenderContextInfo);
+begin
+  rci.GLStates.Disable(stPolygonOffsetFill);
+end;
+
+procedure TMainForm.ShadowFBORendererBeforeRender(Sender: TObject; var rci: TRenderContextInfo);
+begin
+  // get the modelview and projection matrices from the light's "camera"
+  with rci.PipelineTransformation do
+  begin
+    FLightModelViewMatrix := ModelViewMatrix;
+    FLightProjMatrix := ProjectionMatrix;
+  end;
+
+  // push geometry back a bit, prevents false self-shadowing
+  with rci.GLStates do
+  begin
+    Enable(stPolygonOffsetFill);
+    PolygonOffsetFactor := 1;
+    PolygonOffsetUnits := 1;
+  end;
+end;
+
 procedure TMainForm.ShadowShaderApply(Shader: TGLCustomGLSLShader);
 begin
-	Shader.Param['ShadowMap'].AsTexture2D[0] := Matlib.TextureByName(ShadowFBORenderer.DepthTextureName);
-	// set compare to none so we can read off the depth value directly
-	GL.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE_ARB, GL_NONE);
+  with Shader, Matlib do
+  begin
+    Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
+    Param['Scale'].AsFloat := 300.0;
+    Param['Softly'].AsInteger := 1;
+    Param['EyeToLightMatrix'].AsMatrix4f := FEyeToLightMatrix;
+  end;
+end;
+
+procedure TMainForm.ShadowShaderInitialize(Shader: TGLCustomGLSLShader);
+begin
+  with Shader, Matlib do
+  begin
+    Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
+    //Param['LightPosition'].AsVector4f := ShadowCamera.Position.AsVector;
+  end;
 end;
 
 end.

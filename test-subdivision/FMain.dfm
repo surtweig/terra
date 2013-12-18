@@ -35,30 +35,33 @@ object MainForm: TMainForm
     Left = 32
     Top = 32
     object Camera: TGLCamera
-      DepthOfView = 100.000000000000000000
+      DepthOfView = 1000.000000000000000000
       FocalLength = 50.000000000000000000
+      Position.Coordinates = {0000000000000000000048C20000803F}
       Direction.Coordinates = {00000000000000000000803F00000000}
       Up.Coordinates = {000000000000803F0000008000000000}
     end
     object ShadowCamera: TGLCamera
-      DepthOfView = 100.000000000000000000
-      FocalLength = 50.000000000000000000
+      DepthOfView = 400.000000000000000000
+      FocalLength = 200.000000000000000000
       TargetObject = Root
-      Position.Coordinates = {00004842000000000000F0410000803F}
+      Position.Coordinates = {0000C8420000F041000048C20000803F}
       object Light: TGLLightSource
         ConstAttenuation = 1.000000000000000000
         SpotCutOff = 180.000000000000000000
       end
     end
     object ShadowFBORenderer: TGLFBORenderer
-      Width = 1024
-      Height = 1024
+      Width = 2048
+      Height = 2048
       DepthTextureName = 'shadow'
       MaterialLibrary = Matlib
       ClearOptions = [coDepthBufferClear, coUseBufferBackground]
       Camera = ShadowCamera
       RootObject = Root
-      EnabledRenderBuffers = []
+      EnabledRenderBuffers = [erbDepth]
+      BeforeRender = ShadowFBORendererBeforeRender
+      AfterRender = ShadowFBORendererAfterRender
       PostGenerateMipmap = False
     end
     object Root: TGLDummyCube
@@ -71,7 +74,6 @@ object MainForm: TMainForm
       object Mesh: TGLMesh
         Material.MaterialLibrary = Matlib
         Material.LibMaterialName = 'gray'
-        Position.Coordinates = {0000000000000000000048420000803F}
         Scale.Coordinates = {0000C8410000C8410000C84100000000}
         Mode = mmTriangles
         VertexMode = vmVN
@@ -102,6 +104,7 @@ object MainForm: TMainForm
       item
         Name = 'gray'
         Tag = 0
+        Shader = ShadowShader
       end
       item
         Name = 'red'
@@ -292,8 +295,8 @@ object MainForm: TMainForm
         Name = 'shadow'
         Tag = 0
         Material.Texture.ImageClassName = 'TGLBlankImage'
-        Material.Texture.Image.Width = 64
-        Material.Texture.Image.Height = 64
+        Material.Texture.Image.Width = 2048
+        Material.Texture.Image.Height = 2048
         Material.Texture.Image.ColorFormat = 6408
         Material.Texture.MagFilter = maNearest
         Material.Texture.MinFilter = miNearest
@@ -313,6 +316,7 @@ object MainForm: TMainForm
   object ShadowShader: TGLSLShader
     Enabled = False
     OnApply = ShadowShaderApply
+    OnInitialize = ShadowShaderInitialize
     Left = 160
     Top = 32
   end

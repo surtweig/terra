@@ -88,7 +88,7 @@ begin
    for i:= 1 to 1000 do begin
 		crSize:= exp(RandG(0, 1))*0.35;
 		if crSize > 0.8 then crSize:= 0.5;
-		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.05);
+		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.025);
 		if i mod 800 = 0 then
 			xSmooth;
    end;
@@ -96,7 +96,7 @@ begin
   //	for i:= 1 to 1 do
 	//	xSmooth;
 
-	xBuildNormals(0.03);
+	xBuildNormals(0.05);
 end;
 
 function TGeosphere.GetNode(index : integer) : TGeoNode;
