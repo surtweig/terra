@@ -96,7 +96,7 @@ begin
   //	for i:= 1 to 1 do
 	//	xSmooth;
 
-	xBuildNormals(0.05);
+	xBuildNormals(0.1);
 end;
 
 function TGeosphere.GetNode(index : integer) : TGeoNode;
@@ -216,7 +216,7 @@ begin
 	setlength(xNodes, length(icoverts));
 	for i := 0 to high(xNodes) do begin
 		xNodes[i].position:= VectorAdd(VectorNormalize(icoverts[i]), VectorScale(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5), 0.25));
-      //xNodes[i].position.X:= xNodes[i].position.X * 0.1;
+      //xNodes[i].position.X:= xNodes[i].position.X * 0.25;
 		xNodes[i].radius:= VectorLength(xNodes[i].position);
 	  //	xNodes[i].radius:= xNodes[i].radius;// + Random*0.2;
 	  //	ScaleVector(xNodes[i].position, xNodes[i].radius);
@@ -255,7 +255,8 @@ begin
 			if N12 = -1 then begin
 				N12:= xAddNode;
 				xNodes[N12].level:= xSubdivisionLevel+1;
-         	xNodes[N12].position:= VectorNormalize(VectorAdd(xNodes[N1].position, xNodes[N2].position));
+         	//xNodes[N12].position:= VectorNormalize(VectorAdd(xNodes[N1].position, xNodes[N2].position));
+         	xNodes[N12].position:= VectorScale(VectorAdd(xNodes[N1].position, xNodes[N2].position), 0.5);
 				xNodes[N12].radius:= (xNodes[N1].radius+xNodes[N2].radius)*0.5;
 
 				{if xSubdivisionLevel >= 0 then begin

@@ -12,6 +12,7 @@ object MainForm: TMainForm
   Font.Style = []
   OldCreateOrder = False
   WindowState = wsMaximized
+  OnClose = FormClose
   OnCreate = FormCreate
   DesignSize = (
     1087
@@ -35,15 +36,17 @@ object MainForm: TMainForm
     Left = 32
     Top = 32
     object Camera: TGLCamera
-      DepthOfView = 1000.000000000000000000
+      DepthOfView = 100.000000000000000000
       FocalLength = 50.000000000000000000
+      NearPlaneBias = 0.100000001490116100
       Position.Coordinates = {0000000000000000000048C20000803F}
       Direction.Coordinates = {00000000000000000000803F00000000}
       Up.Coordinates = {000000000000803F0000008000000000}
     end
     object ShadowCamera: TGLCamera
-      DepthOfView = 400.000000000000000000
+      DepthOfView = 300.000000000000000000
       FocalLength = 200.000000000000000000
+      NearPlaneBias = 100.000000000000000000
       TargetObject = Root
       Position.Coordinates = {0000C8420000F041000048C20000803F}
       object Light: TGLLightSource
@@ -59,7 +62,7 @@ object MainForm: TMainForm
       ClearOptions = [coDepthBufferClear, coUseBufferBackground]
       Camera = ShadowCamera
       RootObject = Root
-      EnabledRenderBuffers = [erbDepth]
+      EnabledRenderBuffers = []
       BeforeRender = ShadowFBORendererBeforeRender
       AfterRender = ShadowFBORendererAfterRender
       PostGenerateMipmap = False
@@ -295,11 +298,10 @@ object MainForm: TMainForm
         Name = 'shadow'
         Tag = 0
         Material.Texture.ImageClassName = 'TGLBlankImage'
-        Material.Texture.Image.Width = 2048
-        Material.Texture.Image.Height = 2048
+        Material.Texture.Image.Width = 1024
+        Material.Texture.Image.Height = 1024
         Material.Texture.Image.ColorFormat = 6408
-        Material.Texture.MagFilter = maNearest
-        Material.Texture.MinFilter = miNearest
+        Material.Texture.MinFilter = miLinear
         Material.Texture.TextureMode = tmReplace
         Material.Texture.TextureWrapS = twClampToBorder
         Material.Texture.TextureWrapT = twClampToBorder
@@ -308,6 +310,7 @@ object MainForm: TMainForm
         Material.Texture.TextureFormatEx = tfDEPTH_COMPONENT24
         Material.Texture.Compression = tcNone
         Material.Texture.BorderColor.Color = {0000803F000000000000000000000000}
+        Material.Texture.Disabled = False
         Material.Texture.TextureCompareMode = tcmCompareRtoTexture
       end>
     Left = 96

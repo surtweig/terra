@@ -51,6 +51,7 @@ type
       var rci: TRenderContextInfo);
     procedure ShadowFBORendererAfterRender(Sender: TObject;
       var rci: TRenderContextInfo);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
 	private
     FBiasMatrix: TMatrix;
     FLightModelViewMatrix: TMatrix;
@@ -115,20 +116,20 @@ procedure TMainForm.CadencerProgress(Sender: TObject; const deltaTime,
   newTime: Double);
 begin
 
-	Mesh.Turn(deltaTime*5);
+	Mesh.Turn(deltaTime*1);
 	Mesh.Pitch(deltaTime);
 
 	if IsKeyDown(VK_LEFT) then
-		Mesh.Turn(deltaTime*60);
+		Mesh.Turn(deltaTime*30);
 
 	if IsKeyDown(VK_RIGHT) then
-		Mesh.Turn(-deltaTime*60);
+		Mesh.Turn(-deltaTime*30);
 
 	if IsKeyDown(VK_UP) then
-		Mesh.Pitch(deltaTime*60);
+		Mesh.Pitch(deltaTime*30);
 
 	if IsKeyDown(VK_DOWN) then
-		Mesh.Pitch(-deltaTime*60);
+		Mesh.Pitch(-deltaTime*30);
 
 	if IsKeyDown('w') then
       Camera.Translate(0, 0, 10*deltaTime);
@@ -137,6 +138,11 @@ begin
       Camera.Translate(0, 0, -10*deltaTime);
 
    Viewer.Invalidate;
+end;
+
+procedure TMainForm.FormClose(Sender: TObject; var Action: TCloseAction);
+begin
+// 	Matlib.Materials.GetLibMaterialByName('shadow').Material.Texture.Image.AsBitmap.SaveToFile('shadowmap.bmp');
 end;
 
 procedure TMainForm.FormCreate(Sender: TObject);
@@ -175,6 +181,7 @@ begin
 
    //Mesh.CalcNormals(fwClockWise);
    Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount);
+	//geo.Free;
    setlength(subvert, 0);
 end;
 
@@ -208,8 +215,8 @@ begin
   with rci.GLStates do
   begin
     Enable(stPolygonOffsetFill);
-    PolygonOffsetFactor := 1;
-    PolygonOffsetUnits := 1;
+    PolygonOffsetFactor := 2;
+    PolygonOffsetUnits := 2;
   end;
 end;
 
@@ -218,7 +225,7 @@ begin
   with Shader, Matlib do
   begin
     Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
-    Param['Scale'].AsFloat := 300.0;
+    Param['Scale'].AsFloat := 200.0;
     Param['Softly'].AsInteger := 1;
     Param['EyeToLightMatrix'].AsMatrix4f := FEyeToLightMatrix;
   end;
