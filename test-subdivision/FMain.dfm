@@ -46,7 +46,7 @@ object MainForm: TMainForm
     object ShadowCamera: TGLCamera
       DepthOfView = 300.000000000000000000
       FocalLength = 200.000000000000000000
-      NearPlaneBias = 100.000000000000000000
+      NearPlaneBias = 50.000000000000000000
       TargetObject = Root
       Position.Coordinates = {0000C8420000F041000048C20000803F}
       object Light: TGLLightSource

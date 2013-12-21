@@ -8,16 +8,23 @@ uses
 type
 	//TIcosahedronVertexAdjacency = array of integer;
 
-	TGeoNode = record
+	TGeoNode = packed record
 		position, normal : TVector3f;
 		radius : single;
 		adjacency : array of TIntegerDynArray;
-		index, level : integer;
-		//firstSubTriangleIndex : integer;
+		//index, level : integer;
 	end;
 	//PGeoNode = ^TGeoNode;
 
+  	TGeoTrianglesTreeNode = record
+      vertices : TVector3i;
+		childTreeNodes : array [0..3] of integer;
+   end;
+
 	TGeosphere = class
+      NoiseFactor : single;
+		NoiseMinOctave, NoiseMaxOctave : integer;
+
 		constructor Create (subdivisions : integer);
 
 		function GetNode(index : integer) : TGeoNode;
@@ -29,7 +36,8 @@ type
 
 		private
 			xNodes : array of TGeoNode;
-			xTriangles : array of TVector3i;
+			xTriangles : array of TVector4i;
+			xTrianglesTreeNodes : array of TGeoTrianglesTreeNode;
 
 			procedure xInitIcosahedron;
 			procedure xBuildNormals(sharpness : single);
@@ -43,6 +51,8 @@ type
 			procedure xConnectNodes(node1index, node2index, level : integer);
 			procedure xSmooth;
 			procedure xMakeCrater(centerNodeIndex : integer; craterRadius, craterDepth : single);
+			procedure xMakeMountain(startNodeIndex, steps : integer; height : single; dir : TVector3f);
+			function xAddTriangleTreeNode(v : TVector4i; parentIndex : integer = -1) : integer;
 	end;
 
 implementation
@@ -76,22 +86,33 @@ var i : integer;
     crSize : single;
 begin
 	xInitIcosahedron;
+
    xSubdivisionLevel:= 0;
+	NoiseFactor:= 10.0;
+	NoiseMinOctave:= 1;
+	NoiseMaxOctave:= 6;
 	for i:= 1 to subdivisions do begin
 		//WriteLog('subdivide');
 		xSubdivide;
 		xSubdivisionLevel:= i;
 
-		if i mod 1 = 0 then xSmooth;
+	  	if i mod 1 = 0 then xSmooth;
    end;
 
-   for i:= 1 to 1000 do begin
-		crSize:= exp(RandG(0, 1))*0.35;
-		if crSize > 0.8 then crSize:= 0.5;
-		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.025);
-		if i mod 800 = 0 then
+	for i:= 1 to 100 do begin
+      xMakeMountain(Random(length(xNodes)), 2000, 0.005, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
+		if i mod 20 = 0 then
 			xSmooth;
    end;
+
+   for i:= 1 to 2000 do begin
+		crSize:= exp(RandG(0, 1))*0.15;
+		if crSize > 0.8 then crSize:= 0.8;
+		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.025);
+		if i mod 501 = 0 then
+  			xSmooth;
+   end;
+
 
   //	for i:= 1 to 1 do
 	//	xSmooth;
@@ -135,8 +156,8 @@ var i : integer;
 begin
 	i:= length(xNodes);
 	setlength(xNodes, i+1);
-	xNodes[i].index:= i;
-	xNodes[i].level:= 0;
+	//xNodes[i].index:= i;
+	//xNodes[i].level:= 0;
 	xNodes[i].radius:= 1;
 	setlength(xNodes[i].adjacency, 0);
 	Result:= i;//@xNodes[i];
@@ -210,7 +231,7 @@ const
 		(0, 1, 10, 4, 5), (3, 2, 11, 4, 5), (8, 1, 6, 0, 7), (9, 2, 3, 6, 7));
 
 var
-	i, j : integer;
+	i, j, n : integer;
 
 begin
 	setlength(xNodes, length(icoverts));
@@ -225,14 +246,17 @@ begin
 		setlength(xNodes[i].adjacency[0], 5);
 		for j := 0 to 4 do
 			xNodes[i].adjacency[0][j]:= icoadj[i][j];
-		xNodes[i].index:= i;
-		xNodes[i].level:= 0;
+		//xNodes[i].index:= i;
+	  	//xNodes[i].level:= 0;
+
+
 	end;
 
 	setlength(xTriangles, length(icotris));
-	for i := 0 to high(xTriangles) do
-		xTriangles[i]:= Vector3iMake(icotris[i][0], icotris[i][1], icotris[i][2]);
-
+	for i := 0 to high(xTriangles) do begin
+		xTriangles[i]:= Vector4iMake(icotris[i][0], icotris[i][1], icotris[i][2], i);
+      xAddTriangleTreeNode(xTriangles[i]);
+   end;
 end;
 
 procedure TGeosphere.xSubdivide;
@@ -254,7 +278,7 @@ begin
 			N12:= FindNodesCommonAdjacency(N1, N2, xSubdivisionLevel+1);
 			if N12 = -1 then begin
 				N12:= xAddNode;
-				xNodes[N12].level:= xSubdivisionLevel+1;
+				//xNodes[N12].level:= xSubdivisionLevel+1;
          	//xNodes[N12].position:= VectorNormalize(VectorAdd(xNodes[N1].position, xNodes[N2].position));
          	xNodes[N12].position:= VectorScale(VectorAdd(xNodes[N1].position, xNodes[N2].position), 0.5);
 				xNodes[N12].radius:= (xNodes[N1].radius+xNodes[N2].radius)*0.5;
@@ -273,8 +297,8 @@ begin
 					xNodes[N12].radius:= xNodes[N12].radius/acc;
             end; }
 
-         	if (xSubdivisionLevel > 0) and (xSubdivisionLevel <= 6) then begin
-            	xNodes[N12].radius:= xNodes[N12].radius + Random*6.5/power(xSubdivisionLevel+1, 3);
+         	if (xSubdivisionLevel >= NoiseMinOctave) and (xSubdivisionLevel <= NoiseMaxOctave) then begin
+            	xNodes[N12].radius:= xNodes[N12].radius + Random*NoiseFactor/power(xSubdivisionLevel+1, 3);
 					//AddVector(xNodes[N12].position, VectorScale(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5), 0.2/(xSubdivisionLevel+1)));
 	            //xNodes[N12].radius:= VectorLength(xNodes[N12].position);
             end;
@@ -292,10 +316,19 @@ begin
 
 		i:= length(xTriangles);
 		setlength(xTriangles, i+3);
-		xTriangles[tri]:= Vector3iMake(Na, newNs[0], newNs[2]);
-		xTriangles[i]:=   Vector3iMake(Nb, newNs[1], newNs[0]);
-		xTriangles[i+1]:= Vector3iMake(Nc, newNs[2], newNs[1]);
-		xTriangles[i+2]:= Vector3iMake(newNs[0], newNs[1], newNs[2]);
+		j:= xTriangles[tri].W;
+
+		xTriangles[tri]:= Vector4iMake(Na, newNs[0], newNs[2]);
+		xAddTriangleTreeNode(xTriangles[tri], j);
+
+		xTriangles[i]:=   Vector4iMake(Nb, newNs[1], newNs[0]);
+		xAddTriangleTreeNode(xTriangles[i], j);
+
+		xTriangles[i+1]:= Vector4iMake(Nc, newNs[2], newNs[1]);
+		xAddTriangleTreeNode(xTriangles[i+1], j);
+
+		xTriangles[i+2]:= Vector4iMake(newNs[0], newNs[1], newNs[2]);
+		xAddTriangleTreeNode(xTriangles[i+2], j);
 
 		{Nab:= FindNodesCommonAdjacency(Na, Nb, xSubdivisionLevel+1);
 		if Nab = -1 then begin
@@ -432,6 +465,63 @@ begin
    centerPosition:= xNodes[centerNodeIndex].position;
 
 	processNode(centerNodeIndex);
+end;
+
+
+function TGeosphere.xAddTriangleTreeNode(v : TVector4i; parentIndex : integer) : integer;
+var n, i : integer;
+
+begin
+	n:= length(xTrianglesTreeNodes);
+   setlength(xTrianglesTreeNodes, n+1);
+	with xTrianglesTreeNodes[n] do begin
+      vertices:= Vector3iMake(v);
+		v.W:= n;
+      for i:= 0 to high(childTreeNodes) do
+			childTreeNodes[i]:= -1;
+   end;
+
+	if parentIndex >= 0 then
+      with xTrianglesTreeNodes[parentIndex] do begin
+         for i:= 0 to high(childTreeNodes) do
+				if childTreeNodes[i] = -1 then begin
+					childTreeNodes[i]:= n;
+					Break;
+            end;
+      end;
+
+	Result:= n;
+end;
+
+procedure TGeosphere.xMakeMountain(startNodeIndex, steps : integer; height : single; dir : TVector3f);
+var nodeIndex, lev, i, j, adjI, nextNodeIndex : integer;
+    maxDot, dot : single;
+begin
+	nodeIndex:= startNodeIndex;
+	//WriteLog('');
+  //	WriteLog('   mountain');
+  //	WriteLog('');
+	for i:= 1 to steps do begin
+		xNodes[nodeIndex].radius:= xNodes[nodeIndex].radius + height;
+   	xNodes[nodeIndex].position:= VectorScale(VectorNormalize(xNodes[nodeIndex].position), xNodes[nodeIndex].radius);
+      lev:= high(xNodes[nodeIndex].adjacency);
+		maxDot:= -1;
+		nextNodeIndex:= xNodes[nodeIndex].adjacency[lev][0];
+		//WriteLog('');
+	  {	for j:= 0 to high(xNodes[nodeIndex].adjacency[lev]) do begin
+         adjI:= xNodes[nodeIndex].adjacency[lev][j];
+			dot:= VectorDotProduct(dir, VectorNormalize(VectorSubtract(xNodes[adjI].position, xNodes[nodeIndex].position)));
+         if dot > maxDot then begin
+				nextNodeIndex:= adjI;
+				maxDot:= dot;
+
+         end;
+         //WriteLog(FloatToStr(dot));
+      end;
+		nodeIndex:= nextNodeIndex;
+		WriteLog(IntToStr(nodeIndex));}
+		nodeIndex:= xNodes[nodeIndex].adjacency[lev][Random(length(xNodes[nodeIndex].adjacency[lev]))];
+   end;
 end;
 
 initialization
