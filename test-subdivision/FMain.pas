@@ -7,7 +7,8 @@ uses
 	Dialogs, GLScene, GLMesh, GLCoordinates, GLCadencer, GLWin32Viewer,
 	GLCrossPlatform, BaseClasses, VectorTypes, VectorGeometry, GLState, Math,
    GLMaterial, UGeosphere, GLzBuffer, GLKeyboard, GLObjects, JPEG,
-   GLCustomShader, GLSLShader, GLFBORenderer, GLContext, GLRenderContextInfo, OpenGLTokens, GLUtils;
+   GLCustomShader, GLSLShader, GLFBORenderer, GLContext, GLRenderContextInfo, OpenGLTokens, GLUtils,
+  GLNavigator;
 
 const
 	A = 0.5;
@@ -40,6 +41,14 @@ type
     Root: TGLDummyCube;
     PrepareShadowMapping: TGLDirectOpenGL;
     ShadowCamera: TGLCamera;
+    WalkerSphere: TGLSphere;
+    SphereA: TGLSphere;
+    SphereB: TGLSphere;
+    SphereC: TGLSphere;
+    Stars: TGLDummyCube;
+    Sun: TGLSprite;
+    Navigator: TGLNavigator;
+    UserInterface: TGLUserInterface;
 		procedure FormCreate(Sender: TObject);
 		procedure CadencerProgress(Sender: TObject; const deltaTime,
 			newTime: Double);
@@ -52,6 +61,7 @@ type
     procedure ShadowFBORendererAfterRender(Sender: TObject;
       var rci: TRenderContextInfo);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure WalkerProgress(Sender: TObject; const deltaTime, newTime: Double);
 	private
     FBiasMatrix: TMatrix;
     FLightModelViewMatrix: TMatrix;
@@ -131,11 +141,25 @@ begin
 	if IsKeyDown(VK_DOWN) then
 		Mesh.Pitch(-deltaTime*30);
 
-	if IsKeyDown('w') then
+ 	{if IsKeyDown('w') then
       Camera.Translate(0, 0, 10*deltaTime);
 
 	if IsKeyDown('s') then
-      Camera.Translate(0, 0, -10*deltaTime);
+      Camera.Translate(0, 0, -10*deltaTime);}
+
+	if IsKeyDown('1') then begin
+		Viewer.Camera:= WalkerCamera;
+		UserInterface.MouseLookActivate;
+		WalkerSphere.Visible:= false;
+   end;
+
+	if IsKeyDown('2') then begin
+		Viewer.Camera:= Camera;
+		UserInterface.MouseLookDeactivate;
+		WalkerSphere.Visible:= true;
+   end;
+
+	//Caption:= FloatToStr(geo.GetHeightAtPoint(AffineVectorMake(mesh.AbsoluteToLocal(Camera.Position.AsVector))));
 
    Viewer.Invalidate;
 end;
@@ -148,7 +172,8 @@ end;
 procedure TMainForm.FormCreate(Sender: TObject);
 var
 	n : TVector3f;
-   vi, ti : integer;
+   vi, ti, i : integer;
+	phi, theta, r, size : single;
 
 begin
 	ShadowShader.VertexProgram.LoadFromFile('shadowmap_vp.glsl');
@@ -183,6 +208,30 @@ begin
    Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount);
 	//geo.Free;
    setlength(subvert, 0);
+
+   for i:= 0 to 1000 do begin
+   	//theta:= Random*pi;
+		//phi:= 2.0*Math.Arcsin(2*Random-1);
+
+		//theta:= Random*pi;
+		//phi:= Random*2*pi - pi;
+
+		theta:= Math.arccos(2*Random-1);
+		phi:= 2*pi*Random;
+
+		r:= 100;
+		size:= exp(RandG(2, 0.5))*0.1;
+		with TGLSprite(Stars.AddNewChild(TGLSprite)) do begin
+         Material.MaterialLibrary:= Matlib;
+			Material.LibMaterialName:= 'star' + IntToStr(1+Random(2));
+			Position.X:= sin(theta)*cos(phi)*r;
+			Position.Y:= sin(theta)*sin(phi)*r;
+			Position.Z:= cos(theta)*r;
+			Scale.SetVector(size, size, size);
+      end;
+   end;
+
+	Sun.Position:= ShadowCamera.Position;
 end;
 
 procedure TMainForm.PrepareShadowMappingRender(Sender: TObject; var rci: TRenderContextInfo);
@@ -238,6 +287,39 @@ begin
     Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
     //Param['LightPosition'].AsVector4f := ShadowCamera.Position.AsVector;
   end;
+end;
+
+procedure TMainForm.WalkerProgress(Sender: TObject; const deltaTime, newTime: Double);
+var h : single;
+    ptA, ptB, ptC : TVector3f;
+    d, r : TVector4f;
+
+begin
+  	h:= geo.GetHeightAtPoint(Walker.Position.AsAffineVector);
+	Walker.Up.AsVector:= VectorNormalize(Walker.Position.AsVector);
+	Caption:= FloatToStr(h);
+	Walker.Position.SetPoint(VectorNormalize(Walker.Position.AsAffineVector));
+	if h > 0 then
+		WalkerCamera.Position.Y:= h-1 + 0.01;
+
+	UserInterface.MouseUpdate;
+	UserInterface.MouseLook;
+
+	d:= WalkerCamera.AbsoluteDirection;
+   r:= WalkerCamera.AbsoluteRight;
+	if IsKeyDown('w') then
+   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, deltaTime));
+	if IsKeyDown('s') then
+   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, -deltaTime));
+	if IsKeyDown('a') then
+   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, deltaTime));
+	if IsKeyDown('d') then
+   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, -deltaTime));
+
+  {	geo.GetTriangleAtPoint(AffineVectorMake(mesh.AbsoluteToLocal(Camera.Position.AsVector)), ptA, ptB, ptC, 4);
+	SphereA.Position.SetPoint(ptA);
+	SphereB.Position.SetPoint(ptB);
+	SphereC.Position.SetPoint(ptC);}
 end;
 
 end.

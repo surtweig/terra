@@ -5,6 +5,9 @@ interface
 uses
 	SysUtils, Math, VectorTypes, VectorGeometry, Classes, Types;
 
+const
+	IcosahedronTriangles = 20;
+
 type
 	//TIcosahedronVertexAdjacency = array of integer;
 
@@ -22,7 +25,7 @@ type
    end;
 
 	TGeosphere = class
-      NoiseFactor : single;
+      NoiseFactor, IcoNoiseFactor : single;
 		NoiseMinOctave, NoiseMaxOctave : integer;
 
 		constructor Create (subdivisions : integer);
@@ -33,6 +36,8 @@ type
 		function GetVertex(vi : integer) : TVector3f;
 		function GetNormal(vi : integer) : TVector3f;
 		function TrianglesCount : integer;
+		function GetHeightAtPoint(p : TVector3f) : single;
+		procedure GetTriangleAtPoint(p : TVector3f; var ptA, ptB, ptC : TVector3f; depth : integer = -1);
 
 		private
 			xNodes : array of TGeoNode;
@@ -53,6 +58,7 @@ type
 			procedure xMakeCrater(centerNodeIndex : integer; craterRadius, craterDepth : single);
 			procedure xMakeMountain(startNodeIndex, steps : integer; height : single; dir : TVector3f);
 			function xAddTriangleTreeNode(v : TVector4i; parentIndex : integer = -1) : integer;
+			function xGetTriangleAtDir(dir : TVector3f; triangle : integer; depth : integer = -1) : integer;
 	end;
 
 implementation
@@ -85,39 +91,39 @@ constructor TGeosphere.Create(subdivisions : integer);
 var i : integer;
     crSize : single;
 begin
+	setlength(xNodes, 0);
+	setlength(xTriangles, 0);
+	setlength(xTrianglesTreeNodes, 0);
+
+	IcoNoiseFactor:= 0.0;
 	xInitIcosahedron;
 
    xSubdivisionLevel:= 0;
 	NoiseFactor:= 10.0;
 	NoiseMinOctave:= 1;
-	NoiseMaxOctave:= 6;
+	NoiseMaxOctave:= 7;
 	for i:= 1 to subdivisions do begin
-		//WriteLog('subdivide');
 		xSubdivide;
 		xSubdivisionLevel:= i;
 
 	  	if i mod 1 = 0 then xSmooth;
    end;
 
-	for i:= 1 to 100 do begin
-      xMakeMountain(Random(length(xNodes)), 2000, 0.005, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
+  	for i:= 1 to 100 do begin
+      xMakeMountain(Random(length(xNodes)), 2000, 0.01, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
 		if i mod 20 = 0 then
 			xSmooth;
    end;
 
    for i:= 1 to 2000 do begin
-		crSize:= exp(RandG(0, 1))*0.15;
-		if crSize > 0.8 then crSize:= 0.8;
+		crSize:= exp(RandG(0, 1))*0.25;
+		if crSize > 1.2 then crSize:= 1.2;
 		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.025);
 		if i mod 501 = 0 then
   			xSmooth;
    end;
 
-
-  //	for i:= 1 to 1 do
-	//	xSmooth;
-
-	xBuildNormals(0.1);
+	xBuildNormals(0.075);
 end;
 
 function TGeosphere.GetNode(index : integer) : TGeoNode;
@@ -236,7 +242,7 @@ var
 begin
 	setlength(xNodes, length(icoverts));
 	for i := 0 to high(xNodes) do begin
-		xNodes[i].position:= VectorAdd(VectorNormalize(icoverts[i]), VectorScale(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5), 0.25));
+		xNodes[i].position:= VectorAdd(VectorNormalize(icoverts[i]), VectorScale(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5), IcoNoiseFactor));
       //xNodes[i].position.X:= xNodes[i].position.X * 0.25;
 		xNodes[i].radius:= VectorLength(xNodes[i].position);
 	  //	xNodes[i].radius:= xNodes[i].radius;// + Random*0.2;
@@ -260,7 +266,7 @@ begin
 end;
 
 procedure TGeosphere.xSubdivide;
-var tri, i, j, range, acc : integer;
+var tri, i, j, range, acc, treeNodeIndex : integer;
     //Nab, Nbc, Nca : integer;
     Na, Nb, Nc, N1, N2, N12 : integer;
     newNs : array [0..2] of integer;
@@ -319,16 +325,20 @@ begin
 		j:= xTriangles[tri].W;
 
 		xTriangles[tri]:= Vector4iMake(Na, newNs[0], newNs[2]);
-		xAddTriangleTreeNode(xTriangles[tri], j);
+		treeNodeIndex:= xAddTriangleTreeNode(xTriangles[tri], j);
+		xTriangles[tri].W:= treeNodeIndex;
 
-		xTriangles[i]:=   Vector4iMake(Nb, newNs[1], newNs[0]);
-		xAddTriangleTreeNode(xTriangles[i], j);
+		xTriangles[i]:= Vector4iMake(Nb, newNs[1], newNs[0]);
+		treeNodeIndex:= xAddTriangleTreeNode(xTriangles[i], j);
+		xTriangles[i].W:= treeNodeIndex;
 
 		xTriangles[i+1]:= Vector4iMake(Nc, newNs[2], newNs[1]);
-		xAddTriangleTreeNode(xTriangles[i+1], j);
+		treeNodeIndex:= xAddTriangleTreeNode(xTriangles[i+1], j);
+		xTriangles[i+1].W:= treeNodeIndex;
 
 		xTriangles[i+2]:= Vector4iMake(newNs[0], newNs[1], newNs[2]);
-		xAddTriangleTreeNode(xTriangles[i+2], j);
+		treeNodeIndex:= xAddTriangleTreeNode(xTriangles[i+2], j);
+		xTriangles[i+2].W:= treeNodeIndex;
 
 		{Nab:= FindNodesCommonAdjacency(Na, Nb, xSubdivisionLevel+1);
 		if Nab = -1 then begin
@@ -476,7 +486,7 @@ begin
    setlength(xTrianglesTreeNodes, n+1);
 	with xTrianglesTreeNodes[n] do begin
       vertices:= Vector3iMake(v);
-		v.W:= n;
+		//v.W:= n;
       for i:= 0 to high(childTreeNodes) do
 			childTreeNodes[i]:= -1;
    end;
@@ -521,6 +531,91 @@ begin
 		nodeIndex:= nextNodeIndex;
 		WriteLog(IntToStr(nodeIndex));}
 		nodeIndex:= xNodes[nodeIndex].adjacency[lev][Random(length(xNodes[nodeIndex].adjacency[lev]))];
+   end;
+end;
+
+function TGeosphere.GetHeightAtPoint(p : TVector3f) : single;
+var tri, i : integer;
+    intersection, dir, ptA, ptB, ptC : TVector3f;
+
+begin
+	dir:= VectorNegate(VectorNormalize(p));
+	//dir:= VectorNormalize(p);
+
+	for i:= 0 to IcosahedronTriangles-1 do begin
+		tri:= xGetTriangleAtDir(dir, i);
+		if tri >= 0 then
+			Break;
+   end;
+
+	intersection:= NullVector;
+   if tri >= 0 then begin
+		ptA:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[0] ].position;
+		ptB:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[1] ].position;
+		ptC:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[2] ].position;
+		PointTriangleProjection(NullVector, dir, ptA, ptB, ptC, intersection, False);
+
+		Result:= VectorLength(intersection);
+   end else
+		Result:= -1;
+end;
+
+function TGeosphere.xGetTriangleAtDir(dir : TVector3f; triangle : integer; depth : integer = -1) : integer;
+var ptA, ptB, ptC : TVector3f;
+    isInside : boolean;
+	 i, childRes : integer;
+
+begin
+	ptA:= xNodes[ xTrianglesTreeNodes[triangle].vertices.v[0] ].position;
+	ptB:= xNodes[ xTrianglesTreeNodes[triangle].vertices.v[1] ].position;
+	ptC:= xNodes[ xTrianglesTreeNodes[triangle].vertices.v[2] ].position;
+	isInside:= IsLineIntersectTriangle(NullVector, dir, ptA, ptB, ptC);
+	if VectorDotProduct(VectorNormalize(ptA), dir) > 0 then isInside:= false;
+
+	if isInside then begin
+
+		if depth = 0 then
+			Result:= triangle
+   	else
+		begin
+      	if xTrianglesTreeNodes[triangle].childTreeNodes[0] >= 0 then begin
+				Result:= -1;
+         	for i:= 0 to 3 do begin
+               childRes:= xGetTriangleAtDir(dir, xTrianglesTreeNodes[triangle].childTreeNodes[i], depth-1);
+					if childRes >= 0 then begin
+                  Result:= childRes;
+						Break;
+               end;
+            end;
+
+         end else begin
+				Result:= triangle;
+            //WriteLog(IntToStr(depth));
+         end;
+      end;
+
+   end else
+		Result:= -1;
+end;
+
+procedure TGeosphere.GetTriangleAtPoint(p : TVector3f; var ptA, ptB, ptC : TVector3f; depth : integer);
+var tri, i : integer;
+    dir : TVector3f;
+
+begin
+	dir:= VectorNegate(VectorNormalize(p));
+	//dir:= VectorNormalize(p);
+
+	for i:= 0 to IcosahedronTriangles-1 do begin
+		tri:= xGetTriangleAtDir(dir, i, depth);
+		if tri >= 0 then
+			Break;
+   end;
+
+   if tri >= 0 then begin
+		ptA:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[0] ].position;
+		ptB:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[1] ].position;
+		ptC:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[2] ].position;
    end;
 end;
 

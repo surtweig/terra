@@ -45,7 +45,9 @@ void main()
 	shadow /= acc;
   }
   
+  shadow = clamp(shadow, 0.0, 1.0);
   shadow = saturate(pow(shadow, 0.8), 5.0);
+  
   //shadow = pow(shadow, 5.0);
   //if (shadow > 0.1) shadow = 0.1 + pow(shadow-0.1, 0.1);
   
@@ -53,6 +55,6 @@ void main()
   vec4 Idiff = vec4(1.0, 1.0, 1.0, 1.0) * max(dot(fragNormal, L), 0.0);
   Idiff = clamp(Idiff, 0.0, 1.0);
   
-  gl_FragColor = clamp(1.2 * Idiff * clamp(shadow, 0.0, 1.0), 0.0, 1.0);//vec4(mix(shadow, 1.0, 0.2));
+  gl_FragColor = clamp(1.0 * Idiff * shadow, 0.0, 1.0);//vec4(mix(shadow, 1.0, 0.2));
   gl_FragColor.a = 1.0;
 }
