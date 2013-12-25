@@ -2,35 +2,199 @@ object MainForm: TMainForm
   Left = 0
   Top = 0
   Caption = 'subdivision'
-  ClientHeight = 647
-  ClientWidth = 1087
-  Color = clBtnFace
+  ClientHeight = 360
+  ClientWidth = 640
+  Color = clBlack
+  DoubleBuffered = True
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -11
   Font.Name = 'Tahoma'
   Font.Style = []
+  GlassFrame.Bottom = 5
   OldCreateOrder = False
   WindowState = wsMaximized
   OnClose = FormClose
   OnCreate = FormCreate
   DesignSize = (
-    1087
-    647)
+    640
+    360)
   PixelsPerInch = 96
   TextHeight = 13
   object Viewer: TGLSceneViewer
     Left = 0
     Top = 0
-    Width = 1087
-    Height = 647
+    Width = 640
+    Height = 360
     Camera = Camera
     Buffer.BackgroundColor = clBlack
     Buffer.AmbientColor.Color = {0000000000000000000000000000803F}
     Buffer.AntiAliasing = aaNone
-    FieldOfView = 162.427825927734400000
-    Anchors = [akLeft, akTop, akRight, akBottom]
+    FieldOfView = 148.951782226562500000
+    Align = alClient
+    Visible = False
     TabOrder = 0
+  end
+  object ConfigPanel: TPanel
+    Left = 170
+    Top = 80
+    Width = 300
+    Height = 200
+    Anchors = []
+    BevelOuter = bvNone
+    Color = 16052204
+    Ctl3D = True
+    ParentBackground = False
+    ParentCtl3D = False
+    TabOrder = 1
+    object Label1: TLabel
+      Left = 12
+      Top = 16
+      Width = 43
+      Height = 13
+      Caption = 'Shadows'
+    end
+    object Label2: TLabel
+      Left = 12
+      Top = 43
+      Width = 34
+      Height = 13
+      Caption = 'Terrain'
+    end
+    object Label3: TLabel
+      Left = 12
+      Top = 93
+      Width = 36
+      Height = 13
+      Caption = 'Craters'
+    end
+    object Label4: TLabel
+      Left = 170
+      Top = 93
+      Width = 49
+      Height = 13
+      Caption = 'Mountains'
+    end
+    object Label5: TLabel
+      Left = 12
+      Top = 125
+      Width = 26
+      Height = 13
+      Caption = 'Noise'
+    end
+    object Label6: TLabel
+      Left = 170
+      Top = 125
+      Width = 42
+      Height = 13
+      Caption = 'Canyons'
+    end
+    object ProgressBar: TProgressBar
+      Left = 12
+      Top = 163
+      Width = 277
+      Height = 25
+      TabOrder = 7
+      Visible = False
+    end
+    object ShadowsComboBox: TComboBox
+      Left = 80
+      Top = 13
+      Width = 209
+      Height = 21
+      Style = csDropDownList
+      ItemIndex = 0
+      TabOrder = 0
+      Text = 'Disabled'
+      Items.Strings = (
+        'Disabled'
+        '2048x2048')
+    end
+    object TerrainComboBox: TComboBox
+      Left = 80
+      Top = 40
+      Width = 209
+      Height = 21
+      Style = csDropDownList
+      ItemIndex = 0
+      TabOrder = 1
+      Text = '300k triangles'
+      Items.Strings = (
+        '300k triangles'
+        '1.3m triangles')
+    end
+    object CratersComboBox: TComboBox
+      Left = 57
+      Top = 90
+      Width = 65
+      Height = 21
+      AutoComplete = False
+      TabOrder = 2
+      Text = '1000'
+      Items.Strings = (
+        '0'
+        '100'
+        '500'
+        '1000'
+        '2000'
+        '5000')
+    end
+    object MountainsComboBox: TComboBox
+      Left = 225
+      Top = 90
+      Width = 65
+      Height = 21
+      AutoComplete = False
+      TabOrder = 3
+      Text = '100'
+      Items.Strings = (
+        '0'
+        '50'
+        '100'
+        '200'
+        '500'
+        '1000')
+    end
+    object NoiseComboBox: TComboBox
+      Left = 57
+      Top = 123
+      Width = 65
+      Height = 21
+      AutoComplete = False
+      TabOrder = 4
+      Text = '10'
+      Items.Strings = (
+        '0'
+        '5'
+        '10'
+        '20'
+        '50')
+    end
+    object StartBtn: TButton
+      Left = 12
+      Top = 163
+      Width = 277
+      Height = 25
+      Caption = 'Start'
+      TabOrder = 5
+      OnClick = StartBtnClick
+    end
+    object CanyonsComboBox: TComboBox
+      Left = 225
+      Top = 123
+      Width = 65
+      Height = 21
+      AutoComplete = False
+      TabOrder = 6
+      Text = '100'
+      Items.Strings = (
+        '0'
+        '50'
+        '100'
+        '200'
+        '500'
+        '1000')
+    end
   end
   object Scene: TGLScene
     Left = 32
@@ -55,11 +219,11 @@ object MainForm: TMainForm
       Up.Coordinates = {000000000000803F0000008000000000}
     end
     object ShadowCamera: TGLCamera
-      DepthOfView = 300.000000000000000000
+      DepthOfView = 400.000000000000000000
       FocalLength = 200.000000000000000000
       NearPlaneBias = 50.000000000000000000
       TargetObject = Root
-      Position.Coordinates = {0000C8420000F041000048C20000803F}
+      Position.Coordinates = {0000164300003442000096C20000803F}
       object Light: TGLLightSource
         ConstAttenuation = 1.000000000000000000
         SpotCutOff = 180.000000000000000000
@@ -95,7 +259,6 @@ object MainForm: TMainForm
           Position.Coordinates = {77D6883E77D6083FB3414D3F0000803F}
           OnProgress = WalkerProgress
           CubeSize = 0.100000001490116100
-          VisibleAtRunTime = True
           object WalkerCamera: TGLCamera
             DepthOfView = 300.000000000000000000
             FocalLength = 80.000000000000000000
@@ -127,6 +290,7 @@ object MainForm: TMainForm
   end
   object Cadencer: TGLCadencer
     Scene = Scene
+    Enabled = False
     OnProgress = CadencerProgress
     Left = 232
     Top = 32
@@ -1060,14 +1224,14 @@ object MainForm: TMainForm
     VirtualUp.Coordinates = {000000000000803F000000000000803F}
     MovingObject = WalkerCamera
     UseVirtualUp = True
-    Left = 224
-    Top = 216
+    Left = 32
+    Top = 96
   end
   object UserInterface: TGLUserInterface
     MouseSpeed = 5.000000000000000000
     GLNavigator = Navigator
     GLVertNavigator = Navigator
-    Left = 296
-    Top = 216
+    Left = 96
+    Top = 96
   end
 end

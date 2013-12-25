@@ -8,7 +8,7 @@ uses
 	GLCrossPlatform, BaseClasses, VectorTypes, VectorGeometry, GLState, Math,
    GLMaterial, UGeosphere, GLzBuffer, GLKeyboard, GLObjects, JPEG,
    GLCustomShader, GLSLShader, GLFBORenderer, GLContext, GLRenderContextInfo, OpenGLTokens, GLUtils,
-  GLNavigator;
+  GLNavigator, ExtCtrls, StdCtrls, ComCtrls;
 
 const
 	A = 0.5;
@@ -49,6 +49,21 @@ type
     Sun: TGLSprite;
     Navigator: TGLNavigator;
     UserInterface: TGLUserInterface;
+    ConfigPanel: TPanel;
+    ShadowsComboBox: TComboBox;
+    Label1: TLabel;
+    Label2: TLabel;
+    TerrainComboBox: TComboBox;
+    CratersComboBox: TComboBox;
+    Label3: TLabel;
+    Label4: TLabel;
+    MountainsComboBox: TComboBox;
+    NoiseComboBox: TComboBox;
+    Label5: TLabel;
+    StartBtn: TButton;
+    Label6: TLabel;
+    CanyonsComboBox: TComboBox;
+    ProgressBar: TProgressBar;
 		procedure FormCreate(Sender: TObject);
 		procedure CadencerProgress(Sender: TObject; const deltaTime,
 			newTime: Double);
@@ -62,6 +77,7 @@ type
       var rci: TRenderContextInfo);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure WalkerProgress(Sender: TObject; const deltaTime, newTime: Double);
+    procedure StartBtnClick(Sender: TObject);
 	private
     FBiasMatrix: TMatrix;
     FLightModelViewMatrix: TMatrix;
@@ -69,13 +85,17 @@ type
     FInvCameraMatrix: TMatrix;
     FEyeToLightMatrix: TMatrix;
 	public
-		{ Public declarations }
+		procedure CreateGeo;
+		procedure CreateStars;
 	end;
 
 var
 	MainForm: TMainForm;
 	subvert : array of TVector3f;
 	geo : TGeosphere;
+
+	Subdivisions, CratersCount, MountainsCount, CanyonsCount : integer;
+	NoiseFactor : single;
 
 implementation
 
@@ -122,6 +142,12 @@ begin
    end;
 end;
 
+procedure geoProgress(progress : single);
+begin
+	MainForm.ProgressBar.Position:= round(progress*100);
+	Application.ProcessMessages;
+end;
+
 procedure TMainForm.CadencerProgress(Sender: TObject; const deltaTime,
   newTime: Double);
 begin
@@ -141,11 +167,13 @@ begin
 	if IsKeyDown(VK_DOWN) then
 		Mesh.Pitch(-deltaTime*30);
 
- 	{if IsKeyDown('w') then
-      Camera.Translate(0, 0, 10*deltaTime);
+   if Viewer.Camera = Camera then begin
+	 	if IsKeyDown('w') then
+   	   Camera.Translate(0, 0, 10*deltaTime);
 
-	if IsKeyDown('s') then
-      Camera.Translate(0, 0, -10*deltaTime);}
+		if IsKeyDown('s') then
+   	   Camera.Translate(0, 0, -10*deltaTime);
+   end;
 
 	if IsKeyDown('1') then begin
 		Viewer.Camera:= WalkerCamera;
@@ -172,8 +200,6 @@ end;
 procedure TMainForm.FormCreate(Sender: TObject);
 var
 	n : TVector3f;
-   vi, ti, i : integer;
-	phi, theta, r, size : single;
 
 begin
 	ShadowShader.VertexProgram.LoadFromFile('shadowmap_vp.glsl');
@@ -182,20 +208,14 @@ begin
 
    FBiasMatrix := CreateScaleAndTranslationMatrix(VectorMake(0.5, 0.5, 0.5), VectorMake(0.5, 0.5, 0.5));
 
+	Sun.Position:= ShadowCamera.Position;
+end;
+
+procedure TMainForm.CreateGeo;
+var vi, ti : integer;
+begin
    setlength(subvert, 0);
-	{for ti:= 0 to high(Triangles) do begin
-   	n:= CalcPlaneNormal(Vertices[Triangles[ti][0]], Vertices[Triangles[ti][1]], Vertices[Triangles[ti][2]]);
-      for vi := 0 to 2 do begin
-      	//n:= Vertices[Triangles[ti][vi]];
-         //NormalizeVector(n);
-      	Mesh.Vertices.AddVertex(Vertices[Triangles[ti][vi]], n);
-      end;
-   end;}
-
-   //for ti := 0 to high(Triangles) do
-   //	subdivide(VectorNormalize(Vertices[Triangles[ti][0]]), VectorNormalize(Vertices[Triangles[ti][1]]), VectorNormalize(Vertices[Triangles[ti][2]]), 3);
-
-	geo:= TGeosphere.Create(8);
+	geo:= TGeosphere.Create(Subdivisions, NoiseFactor, CratersCount, MountainsCount, CanyonsCount, geoProgress);
 	setlength(subvert, geo.TrianglesCount*3);
 	for vi:= 0 to high(subvert) do
 		subvert[vi]:= geo.GetVertex(vi);
@@ -204,11 +224,16 @@ begin
    for vi := 0 to high(subvert) do
       Mesh.Vertices.AddVertex(subvert[vi], geo.GetNormal(vi));
 
-   //Mesh.CalcNormals(fwClockWise);
    Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount);
 	//geo.Free;
    setlength(subvert, 0);
+end;
 
+procedure TMainForm.CreateStars;
+var phi, theta, r, size : single;
+    i : integer;
+
+begin
    for i:= 0 to 1000 do begin
    	//theta:= Random*pi;
 		//phi:= 2.0*Math.Arcsin(2*Random-1);
@@ -230,8 +255,6 @@ begin
 			Scale.SetVector(size, size, size);
       end;
    end;
-
-	Sun.Position:= ShadowCamera.Position;
 end;
 
 procedure TMainForm.PrepareShadowMappingRender(Sender: TObject; var rci: TRenderContextInfo);
@@ -264,8 +287,8 @@ begin
   with rci.GLStates do
   begin
     Enable(stPolygonOffsetFill);
-    PolygonOffsetFactor := 2;
-    PolygonOffsetUnits := 2;
+    PolygonOffsetFactor := 4;
+    PolygonOffsetUnits := 4;
   end;
 end;
 
@@ -289,6 +312,37 @@ begin
   end;
 end;
 
+procedure TMainForm.StartBtnClick(Sender: TObject);
+begin
+	StartBtn.Visible:= false;
+	ProgressBar.Visible:= true;
+	NoiseFactor:= StrToFloat(NoiseComboBox.Text);
+	CratersCount:= StrToInt(CratersComboBox.Text);
+	MountainsCount:= StrToInt(MountainsComboBox.Text);
+	CanyonsCount:= StrToInt(CanyonsComboBox.Text);
+
+	case TerrainComboBox.ItemIndex of
+		0 : Subdivisions:= 7;
+		1 : Subdivisions:= 8;
+   end;
+
+	CreateGeo;
+	CreateStars;
+
+	ShadowShader.Enabled:= ShadowsComboBox.ItemIndex > 0;
+	ShadowFBORenderer.Active:= ShadowsComboBox.ItemIndex > 0;
+	case ShadowsComboBox.ItemIndex of
+		//1 : ShadowFBORenderer.Width:= 512;
+		//2 : ShadowFBORenderer.Width:= 1024;
+		1 : ShadowFBORenderer.Width:= 2048;
+   end;
+   ShadowFBORenderer.Height:= ShadowFBORenderer.Width;
+
+	ConfigPanel.Visible:= false;
+	Viewer.Visible:= true;
+	Cadencer.Enabled:= true;
+end;
+
 procedure TMainForm.WalkerProgress(Sender: TObject; const deltaTime, newTime: Double);
 var h : single;
     ptA, ptB, ptC : TVector3f;
@@ -297,7 +351,7 @@ var h : single;
 begin
   	h:= geo.GetHeightAtPoint(Walker.Position.AsAffineVector);
 	Walker.Up.AsVector:= VectorNormalize(Walker.Position.AsVector);
-	Caption:= FloatToStr(h);
+	//Caption:= FloatToStr(h);
 	Walker.Position.SetPoint(VectorNormalize(Walker.Position.AsAffineVector));
 	if h > 0 then
 		WalkerCamera.Position.Y:= h-1 + 0.01;

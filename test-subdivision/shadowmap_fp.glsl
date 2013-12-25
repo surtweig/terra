@@ -52,7 +52,7 @@ void main()
   //if (shadow > 0.1) shadow = 0.1 + pow(shadow-0.1, 0.1);
   
   vec3 L = normalize(gl_LightSource[0].position.xyz - fragPosition);
-  vec4 Idiff = vec4(1.0, 1.0, 1.0, 1.0) * max(dot(fragNormal, L), 0.0);
+  vec4 Idiff = vec4(1.0, 1.0, 1.0, 1.0) * max(pow(dot(fragNormal, L), 0.75), 0.0);
   Idiff = clamp(Idiff, 0.0, 1.0);
   
   gl_FragColor = clamp(1.0 * Idiff * shadow, 0.0, 1.0);//vec4(mix(shadow, 1.0, 0.2));

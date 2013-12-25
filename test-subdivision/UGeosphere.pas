@@ -24,11 +24,14 @@ type
 		childTreeNodes : array [0..3] of integer;
    end;
 
+	TProgressCallback = procedure (progress : single);
+
 	TGeosphere = class
       NoiseFactor, IcoNoiseFactor : single;
 		NoiseMinOctave, NoiseMaxOctave : integer;
+		Scale : TVector3f;
 
-		constructor Create (subdivisions : integer);
+		constructor Create (subdivisions : integer; aNoiseFactor : single; aCratersCount, aMountainsCount, aCanyonsCount : integer; progressCallback : TProgressCallback = nil);
 
 		function GetNode(index : integer) : TGeoNode;
 		function NodesCount : integer;
@@ -73,6 +76,20 @@ begin
 	Result.z:= sqrt( 0.5*(v1.z*v1.z + v2.z*v2.z) );
 end;
 
+function VectorMultVector(v, s : TVector3f) : TVector3f;
+begin
+   Result.X:= v.X * s.X;
+   Result.Y:= v.Y * s.Y;
+   Result.Z:= v.Z * s.Z;
+end;
+
+function VectorDivVector(v, s : TVector3f) : TVector3f;
+begin
+   Result.X:= v.X / s.X;
+   Result.Y:= v.Y / s.Y;
+   Result.Z:= v.Z / s.Z;
+end;
+
 function SmoothStep(edge0, edge1, x : single) : single;
 var t : single;
 begin
@@ -87,7 +104,7 @@ begin
 		debugLog.SaveToFile('ugeosphere.log');
 end;
 
-constructor TGeosphere.Create(subdivisions : integer);
+constructor TGeosphere.Create(subdivisions : integer; aNoiseFactor : single; aCratersCount, aMountainsCount, aCanyonsCount : integer; progressCallback : TProgressCallback);
 var i : integer;
     crSize : single;
 begin
@@ -95,13 +112,18 @@ begin
 	setlength(xTriangles, 0);
 	setlength(xTrianglesTreeNodes, 0);
 
+	Scale:= AffineVectorMake(1, 1, 1);
+
 	IcoNoiseFactor:= 0.0;
 	xInitIcosahedron;
 
    xSubdivisionLevel:= 0;
-	NoiseFactor:= 10.0;
+	NoiseFactor:= aNoiseFactor;//10.0;
 	NoiseMinOctave:= 1;
-	NoiseMaxOctave:= 7;
+	NoiseMaxOctave:= 8;
+
+   progressCallback(0.0);
+
 	for i:= 1 to subdivisions do begin
 		xSubdivide;
 		xSubdivisionLevel:= i;
@@ -109,19 +131,33 @@ begin
 	  	if i mod 1 = 0 then xSmooth;
    end;
 
-  	for i:= 1 to 100 do begin
-      xMakeMountain(Random(length(xNodes)), 2000, 0.01, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
+   progressCallback(0.25);
+
+  	for i:= 1 to aMountainsCount{100} do begin
+      xMakeMountain(Random(length(xNodes)), 2000, 0.0025, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
 		if i mod 20 = 0 then
 			xSmooth;
    end;
 
-   for i:= 1 to 2000 do begin
-		crSize:= exp(RandG(0, 1))*0.25;
-		if crSize > 1.2 then crSize:= 1.2;
-		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.025);
+   progressCallback(0.5);
+
+  	for i:= 1 to aCanyonsCount{100} do begin
+      xMakeMountain(Random(length(xNodes)), 2000, -0.00125, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
+		if i mod 40 = 0 then
+			xSmooth;
+   end;
+
+   progressCallback(0.75);
+
+   for i:= 1 to aCratersCount{2000} do begin
+		crSize:= exp(RandG(0, 1))*0.125;
+		if crSize > 1.5 then crSize:= 1.5;
+		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.015);
 		if i mod 501 = 0 then
   			xSmooth;
    end;
+
+   progressCallback(1.0);
 
 	xBuildNormals(0.075);
 end;
@@ -254,7 +290,6 @@ begin
 			xNodes[i].adjacency[0][j]:= icoadj[i][j];
 		//xNodes[i].index:= i;
 	  	//xNodes[i].level:= 0;
-
 
 	end;
 
