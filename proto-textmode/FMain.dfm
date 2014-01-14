@@ -1,9 +1,9 @@
-object Form1: TForm1
+object MainForm: TMainForm
   Left = 0
   Top = 0
-  Caption = 'Form1'
-  ClientHeight = 300
-  ClientWidth = 635
+  Caption = 'proto-textmode'
+  ClientHeight = 600
+  ClientWidth = 900
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -11,6 +11,28 @@ object Form1: TForm1
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  Position = poScreenCenter
+  OnClose = FormClose
+  OnCreate = FormCreate
+  OnKeyPress = FormKeyPress
   PixelsPerInch = 96
   TextHeight = 13
+  object Display: TImage32
+    Left = 0
+    Top = 0
+    Width = 900
+    Height = 600
+    Align = alClient
+    Bitmap.ResamplerClassName = 'TNearestResampler'
+    BitmapAlign = baCenter
+    Color = clBlack
+    ParentColor = False
+    Scale = 1.000000000000000000
+    ScaleMode = smNormal
+    TabOrder = 0
+    ExplicitLeft = 80
+    ExplicitTop = 128
+    ExplicitWidth = 513
+    ExplicitHeight = 233
+  end
 end
