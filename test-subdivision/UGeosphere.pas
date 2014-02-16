@@ -49,6 +49,7 @@ type
 
 			procedure xInitIcosahedron;
 			procedure xBuildNormals(sharpness : single);
+         procedure xNewellBuildNormals;
 
 		protected
 			xSubdivisionLevel : integer;
@@ -58,6 +59,7 @@ type
 			procedure xNodeAddAdjacency(nodeIndex, level, adjNodeIndex : integer);
 			procedure xConnectNodes(node1index, node2index, level : integer);
 			procedure xSmooth;
+         procedure xTransform;
 			procedure xMakeCrater(centerNodeIndex : integer; craterRadius, craterDepth : single);
 			procedure xMakeMountain(startNodeIndex, steps : integer; height : single; dir : TVector3f);
 			function xAddTriangleTreeNode(v : TVector4i; parentIndex : integer = -1) : integer;
@@ -114,13 +116,13 @@ begin
 
 	Scale:= AffineVectorMake(1, 1, 1);
 
-	IcoNoiseFactor:= 0.0;
+	IcoNoiseFactor:= 0.1;
 	xInitIcosahedron;
 
    xSubdivisionLevel:= 0;
 	NoiseFactor:= aNoiseFactor;//10.0;
 	NoiseMinOctave:= 1;
-	NoiseMaxOctave:= 8;
+	NoiseMaxOctave:= 7;
 
    progressCallback(0.0);
 
@@ -135,7 +137,7 @@ begin
 
   	for i:= 1 to aMountainsCount{100} do begin
       xMakeMountain(Random(length(xNodes)), 2000, 0.0025, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
-		if i mod 20 = 0 then
+		if i mod 40 = 0 then
 			xSmooth;
    end;
 
@@ -147,19 +149,30 @@ begin
 			xSmooth;
    end;
 
+
+	for i:= 1 to 3 do
+	   xSmooth;
+
+   xTransform;
+
+	for i:= 1 to 3 do
+	   xSmooth;
+
    progressCallback(0.75);
 
    for i:= 1 to aCratersCount{2000} do begin
-		crSize:= exp(RandG(0, 1))*0.125;
-		if crSize > 1.5 then crSize:= 1.5;
-		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.015);
-		if i mod 501 = 0 then
-  			xSmooth;
+		crSize:= exp(RandG(0, 1))*0.08;
+		if crSize > 2.5 then crSize:= 2.5;
+		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.035);
+		//if i mod 501 = 0 then
+  		//	xSmooth;
    end;
 
+   xSmooth;
    progressCallback(1.0);
 
-	xBuildNormals(0.075);
+	//xBuildNormals(0.075);
+   xNewellBuildNormals;
 end;
 
 function TGeosphere.GetNode(index : integer) : TGeoNode;
@@ -188,7 +201,7 @@ begin
 		for j := 0 to high(xNodes[index2].adjacency[level]) do
 			if xNodes[index1].adjacency[level][i] = xNodes[index2].adjacency[level][j] then begin
 				Result:= xNodes[index1].adjacency[level][i];
-				Break;
+				Exit;
          end;
 end;
 
@@ -339,7 +352,7 @@ begin
             end; }
 
          	if (xSubdivisionLevel >= NoiseMinOctave) and (xSubdivisionLevel <= NoiseMaxOctave) then begin
-            	xNodes[N12].radius:= xNodes[N12].radius + Random*NoiseFactor/power(xSubdivisionLevel+1, 3);
+            	xNodes[N12].radius:= xNodes[N12].radius + Random*NoiseFactor*0.1/power(xSubdivisionLevel, 2);
 					//AddVector(xNodes[N12].position, VectorScale(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5), 0.2/(xSubdivisionLevel+1)));
 	            //xNodes[N12].radius:= VectorLength(xNodes[N12].position);
             end;
@@ -444,6 +457,70 @@ begin
    end;
 end;
 
+procedure TGeosphere.xNewellBuildNormals;
+var i, j, k, highlev, icurrent, inext, ifirst : integer;
+    vcurrent, vnext : TVector3f;
+    bnext : boolean;
+    n : TVector3f;
+
+begin
+    for i:= 0 to high(xNodes) do begin
+		n:= NullVector;
+		highlev:= high(xNodes[i].adjacency);
+		vcurrent:= xNodes[i].position;
+      icurrent:= -1;
+      inext:= xNodes[i].adjacency[highlev][0];
+      vnext:= xNodes[inext].position;
+      ifirst:= inext;
+
+      repeat
+         n.X:= n.X + (vcurrent.Y-vnext.Y) * (vcurrent.Z+vnext.Z);
+         n.Y:= n.Y + (vcurrent.Z-vnext.Z) * (vcurrent.X+vnext.X);
+         n.Z:= n.Z + (vcurrent.X-vnext.X) * (vcurrent.Y+vnext.Y);
+
+         bnext:= false;
+         for j:= 0 to high(xNodes[i].adjacency[highlev]) do begin
+         	for k:= 0 to high(xNodes[inext].adjacency[highlev]) do begin
+               if xNodes[i].adjacency[highlev][j] = xNodes[inext].adjacency[highlev][k] then
+               	if xNodes[i].adjacency[highlev][j] <> icurrent then begin
+                     icurrent:= inext;
+                     inext:= xNodes[i].adjacency[highlev][j];
+                     bnext:= true;
+                     break;
+                  end;
+            end;
+            if bnext then break;
+         end;
+
+         vcurrent:= vnext;
+         vnext:= xNodes[inext].position;
+
+      until inext = ifirst;
+
+    	{for j:= 0 to high(xNodes[i].adjacency[highlev]) do begin
+      	vnext:= xNodes[xNodes[i].adjacency[highlev][j]].position;
+
+         n.X:= n.X + (vcurrent.Y-vnext.Y) * (vcurrent.Z+vnext.Z);
+         n.Y:= n.Y + (vcurrent.Z-vnext.Z) * (vcurrent.X+vnext.X);
+         n.Z:= n.Z + (vcurrent.X-vnext.X) * (vcurrent.Y+vnext.Y);
+
+         vcurrent:= vnext;
+		end;}
+
+      vnext:= xNodes[i].position;
+      n.X:= n.X + (vcurrent.Y-vnext.Y) * (vcurrent.Z+vnext.Z);
+      n.Y:= n.Y + (vcurrent.Z-vnext.Z) * (vcurrent.X+vnext.X);
+      n.Z:= n.Z + (vcurrent.X-vnext.X) * (vcurrent.Y+vnext.Y);
+
+      NormalizeVector(n);
+
+		if VectorDotProduct(n, VectorNormalize(xNodes[i].position)) < 0 then
+      	NegateVector(n);
+
+      xNodes[i].normal:= n;
+	end;
+end;
+
 procedure TGeosphere.xSmooth;
 var i, j, lev : integer;
     acc : single;
@@ -457,6 +534,39 @@ begin
       end;
 	  	acc:= acc / (length(xNodes[i].adjacency[lev])+1);
 		xNodes[i].radius:= acc;
+   end;
+
+   for i:= 0 to high(xNodes) do begin
+   	xNodes[i].position:= VectorScale(VectorNormalize(xNodes[i].position), xNodes[i].radius);
+   end;
+end;
+
+procedure TGeosphere.xTransform;
+var i : integer;
+    minr, maxr, avgr, r : single;
+begin
+	avgr:= 0;
+   minr:= xNodes[0].radius;
+   maxr:= 0;
+	for i:= 0 to high(xNodes) do begin
+		avgr:= avgr + xNodes[i].radius;
+      if xNodes[i].radius < minr then
+      	minr:= xNodes[i].radius;
+      if xNodes[i].radius > maxr then
+      	maxr:= xNodes[i].radius;
+   end;
+
+	avgr:= avgr / length(xNodes);
+
+	for i:= 0 to high(xNodes) do begin
+		r:= xNodes[i].radius;
+
+
+      //r:= minr + abs(r - avgr);
+      //r:= r + sin(r*20)*0.032 + sin(r*10)*0.064;
+      r:= r - abs(sin(r*150)*0.08 + sin(r*90)*0.04);
+
+		xNodes[i].radius:= r;
 		xNodes[i].position:= VectorScale(VectorNormalize(xNodes[i].position), xNodes[i].radius);
    end;
 end;
