@@ -3,7 +3,7 @@ unit UGeosphere;
 interface
 
 uses
-	SysUtils, Math, VectorTypes, VectorGeometry, Classes, Types;
+	SysUtils, Math, VectorTypes, VectorGeometry, Classes, Types, PerlinNoise;
 
 const
 	IcosahedronTriangles = 20;
@@ -24,23 +24,39 @@ type
 		childTreeNodes : array [0..3] of integer;
    end;
 
+	TGeoVertex = record
+		position, normal : TVector3f;
+		uv : TTexPoint;
+	end;
+
+	TGeoMesh = array of TGeoVertex;
+
+   TTrianglesList = array of TVector4i; // 0..2 - nodes indexes; 3 - triangle index
+
 	TProgressCallback = procedure (progress : single);
 
 	TGeosphere = class
+		PerlinOctaves : integer;
+		PerlinPersistence, PerlinLacunarity : single;
       NoiseFactor, IcoNoiseFactor : single;
 		NoiseMinOctave, NoiseMaxOctave : integer;
 		Scale : TVector3f;
+		xAverageRadius : single;
 
 		constructor Create (subdivisions : integer; aNoiseFactor : single; aCratersCount, aMountainsCount, aCanyonsCount : integer; progressCallback : TProgressCallback = nil);
 
 		function GetNode(index : integer) : TGeoNode;
+		function GetTriangleNode(index : integer) : TVector3i;
 		function NodesCount : integer;
 		function FindNodesCommonAdjacency(index1, index2, level : integer) : integer;
 		function GetVertex(vi : integer) : TVector3f;
 		function GetNormal(vi : integer) : TVector3f;
+		function GetTexUV(nodeIndex : integer; triA, triB : integer) : TVector2f;
 		function TrianglesCount : integer;
 		function GetHeightAtPoint(p : TVector3f) : single;
 		procedure GetTriangleAtPoint(p : TVector3f; var ptA, ptB, ptC : TVector3f; depth : integer = -1);
+		procedure GetTriangleChildren(parentTriangle : integer; var childTriangles : TIntegerDynArray; depth : integer = -1);
+		procedure GenerateMesh(var mesh : TGeoMesh; baseTriangleNode : integer = -1; depth : integer = -1);
 
 		private
 			xNodes : array of TGeoNode;
@@ -49,17 +65,21 @@ type
 
 			procedure xInitIcosahedron;
 			procedure xBuildNormals(sharpness : single);
-         procedure xNewellBuildNormals;
+			procedure xNewellBuildNormals;
+			procedure xCalcAverageRadius;
 
 		protected
 			xSubdivisionLevel : integer;
+			xPerlinNoise : TPerlin3DNoise;
+			xPerlinSpectrum : array of single;
 
 			procedure xSubdivide;
 			function xAddNode : integer;
 			procedure xNodeAddAdjacency(nodeIndex, level, adjNodeIndex : integer);
 			procedure xConnectNodes(node1index, node2index, level : integer);
 			procedure xSmooth;
-         procedure xTransform;
+			procedure xTransform;
+			procedure xApplyPerlinNoise;
 			procedure xMakeCrater(centerNodeIndex : integer; craterRadius, craterDepth : single);
 			procedure xMakeMountain(startNodeIndex, steps : integer; height : single; dir : TVector3f);
 			function xAddTriangleTreeNode(v : TVector4i; parentIndex : integer = -1) : integer;
@@ -110,19 +130,28 @@ constructor TGeosphere.Create(subdivisions : integer; aNoiseFactor : single; aCr
 var i : integer;
     crSize : single;
 begin
+	xPerlinNoise:= TPerlin3DNoise.Create(0);
+	PerlinOctaves:= 8;
+	PerlinPersistence:= 0.99;
+	PerlinLacunarity:= 2;
+
+	setlength(xPerlinSpectrum, PerlinOctaves);
+	for i:= 0 to high(xPerlinSpectrum) do
+		xPerlinSpectrum[i]:= Power( IntPower(PerlinLacunarity, i), -PerlinPersistence );
+
 	setlength(xNodes, 0);
 	setlength(xTriangles, 0);
 	setlength(xTrianglesTreeNodes, 0);
 
 	Scale:= AffineVectorMake(1, 1, 1);
 
-	IcoNoiseFactor:= 0.1;
+	IcoNoiseFactor:= 0.0;
 	xInitIcosahedron;
 
    xSubdivisionLevel:= 0;
 	NoiseFactor:= aNoiseFactor;//10.0;
 	NoiseMinOctave:= 1;
-	NoiseMaxOctave:= 7;
+	NoiseMaxOctave:= 4;
 
    progressCallback(0.0);
 
@@ -130,10 +159,12 @@ begin
 		xSubdivide;
 		xSubdivisionLevel:= i;
 
-	  	if i mod 1 = 0 then xSmooth;
-   end;
+	  	//if i mod 1 = 0 then xSmooth;
+	end;
 
-   progressCallback(0.25);
+	//xSmooth;
+
+ (*  progressCallback(0.25);
 
   	for i:= 1 to aMountainsCount{100} do begin
       xMakeMountain(Random(length(xNodes)), 2000, 0.0025, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
@@ -147,32 +178,36 @@ begin
       xMakeMountain(Random(length(xNodes)), 2000, -0.00125, VectorNormalize(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5)));
 		if i mod 40 = 0 then
 			xSmooth;
-   end;
+   end;      *)
 
 
-	for i:= 1 to 3 do
-	   xSmooth;
+ (*	for i:= 1 to 3 do
+		xSmooth;
 
-   xTransform;
+	xTransform;
 
-	for i:= 1 to 3 do
-	   xSmooth;
+  //	for i:= 1 to 3 do
+//	   xSmooth; *)
 
-   progressCallback(0.75);
+	xApplyPerlinNoise;
+
+	progressCallback(0.75);
 
    for i:= 1 to aCratersCount{2000} do begin
-		crSize:= exp(RandG(0, 1))*0.08;
+		crSize:= exp(RandG(0, 1))*0.02;
 		if crSize > 2.5 then crSize:= 2.5;
 		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.035);
 		//if i mod 501 = 0 then
   		//	xSmooth;
    end;
 
-   xSmooth;
+	//xSmooth;
    progressCallback(1.0);
 
 	//xBuildNormals(0.075);
-   xNewellBuildNormals;
+	xNewellBuildNormals;
+
+	xCalcAverageRadius;
 end;
 
 function TGeosphere.GetNode(index : integer) : TGeoNode;
@@ -258,6 +293,62 @@ begin
 	tri:= vi div 3;
 	i:= vi mod 3;
 	Result:= xNodes[xTriangles[tri].v[i]].normal;
+end;
+
+function TGeosphere.GetTexUV(nodeIndex : integer; triA, triB : integer) : TVector2f;
+var vA, vB, vC1, vC2, p : TVector3f;
+    iA, iB, iC1, iC2, i, j : integer;
+	 alpha1, alpha2, u, v, thetaA, theta1, theta2, area, s : single;
+
+begin
+	iC1:= -1;
+	iC2:= -1;
+	for i:= 0 to 2 do begin
+		for j:= 0 to 2 do begin
+			if xTriangles[triA].v[i] = xTriangles[triB].v[j] then begin
+				if (xTriangles[triA].v[i] <> iC1) and (xTriangles[triA].v[i] <> iC2) then begin
+					if (iC1 = -1) then
+						iC1:= xTriangles[triA].v[i]
+					else
+						iC2:= xTriangles[triA].v[i]
+				end;
+			end;
+		end;
+	end;
+
+	iA:= xTriangles[triA].v[0] + xTriangles[triA].v[1] + xTriangles[triA].v[2] - iC1 - iC2;
+	iB:= xTriangles[triB].v[0] + xTriangles[triB].v[1] + xTriangles[triB].v[2] - iC1 - iC2;
+
+	vA:= VectorNormalize(xNodes[iA].position);
+	vB:= VectorNormalize(xNodes[iB].position);
+	vC1:= VectorNormalize(xNodes[iC1].position);
+	vC2:= VectorNormalize(xNodes[iC2].position);
+	p:= VectorNormalize(xNodes[nodeIndex].position);
+
+	alpha1:= 2*Math.ArcSin(VectorLength(VectorSubtract(vA, vC1)));
+	alpha2:= 2*Math.ArcSin(VectorLength(VectorSubtract(vA, vC2)));
+	thetaA:= 2*Math.ArcSin(VectorLength(VectorSubtract(vA, p)));
+	theta1:= 2*Math.ArcSin(VectorLength(VectorSubtract(vC1, p)));
+	theta2:= 2*Math.ArcSin(VectorLength(VectorSubtract(vC2, p)));
+
+	s:= (alpha1+thetaA+theta1)*0.5;
+	area:= sqrt( s * (s-thetaA) * (s-theta1) * (s-alpha1) );
+
+	//area = 0.5*alpha1*u
+	u:= 2*area/alpha1;
+
+	s:= (alpha2+thetaA+theta2)*0.5;
+	area:= sqrt( s * (s-thetaA) * (s-theta2) * (s-alpha2) );
+
+	v:= 2*area/alpha2;
+
+	Result.X:= u;
+	Result.Y:= v;
+end;
+
+function TGeosphere.GetTriangleNode(index : integer) : TVector3i;
+begin
+	Result:= xTrianglesTreeNodes[index].vertices;
 end;
 
 function TGeosphere.TrianglesCount : integer;
@@ -550,8 +641,8 @@ begin
    maxr:= 0;
 	for i:= 0 to high(xNodes) do begin
 		avgr:= avgr + xNodes[i].radius;
-      if xNodes[i].radius < minr then
-      	minr:= xNodes[i].radius;
+		if xNodes[i].radius < minr then
+			minr:= xNodes[i].radius;
       if xNodes[i].radius > maxr then
       	maxr:= xNodes[i].radius;
    end;
@@ -561,14 +652,49 @@ begin
 	for i:= 0 to high(xNodes) do begin
 		r:= xNodes[i].radius;
 
-
       //r:= minr + abs(r - avgr);
       //r:= r + sin(r*20)*0.032 + sin(r*10)*0.064;
-      r:= r - abs(sin(r*150)*0.08 + sin(r*90)*0.04);
+		//r:= r - abs(sin(r*10)*0.58 + sin(r*10)*0.08);
+		//r:= r - abs(sin(r*700)*0.005 + sin(r*100)*0.001);
+
+		//r:= minr + Power((r-minr)/(maxr-minr), 4.0)*(maxr-minr);
+      r:= maxr - abs(r-avgr);
 
 		xNodes[i].radius:= r;
 		xNodes[i].position:= VectorScale(VectorNormalize(xNodes[i].position), xNodes[i].radius);
+	end;
+end;
+
+procedure TGeosphere.xApplyPerlinNoise;
+var i, j : integer;
+	 noisevalue, accum : single;
+	 p : TVector3f;
+
+begin
+	for i:= 0 to high(xNodes) do begin
+		noisevalue:= 0;
+		accum:= 0;
+		for j:= 0 to high(xPerlinSpectrum) do begin
+			p:= VectorScale(xNodes[i].position, IntPower(PerlinLacunarity, j));
+			accum:= accum + xPerlinSpectrum[j];
+			noisevalue:= noisevalue + (1-abs(xPerlinNoise.Noise(p))) * xPerlinSpectrum[j];
+			//noisevalue:= noisevalue + xPerlinNoise.Noise(p) * xPerlinSpectrum[j];
+		end;
+		noisevalue:= noisevalue / accum;
+		//xNodes[i].radius:= xNodes[i].radius * (1 + 0.2*noisevalue);
+		xNodes[i].radius:= xNodes[i].radius + 0.1*Power(noisevalue, 8.0);
+		xNodes[i].position:= VectorScale(VectorNormalize(xNodes[i].position), xNodes[i].radius);
    end;
+end;
+
+
+procedure TGeosphere.xCalcAverageRadius;
+var i : integer;
+begin
+	xAverageRadius:= 0;
+	for i:= 0 to high(xNodes) do
+		xAverageRadius:= xAverageRadius + xNodes[i].radius;
+	xAverageRadius:= xAverageRadius/length(xNodes);
 end;
 
 procedure TGeosphere.xMakeCrater(centerNodeIndex : integer; craterRadius, craterDepth : single);
@@ -761,6 +887,64 @@ begin
 		ptA:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[0] ].position;
 		ptB:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[1] ].position;
 		ptC:= xNodes[ xTrianglesTreeNodes[tri].vertices.v[2] ].position;
+   end;
+end;
+
+procedure TGeosphere.GetTriangleChildren(parentTriangle : integer; var childTriangles : TIntegerDynArray; depth : integer = -1);
+var i, n : integer;
+begin
+	if depth = 0 then begin
+		n:= length(childTriangles);
+		setlength(childTriangles, n+1);
+		childTriangles[n]:= parentTriangle;
+	end else begin
+		if xTrianglesTreeNodes[parentTriangle].childTreeNodes[0] >= 0 then begin
+			for i:= 0 to 3 do
+				GetTriangleChildren(xTrianglesTreeNodes[parentTriangle].childTreeNodes[i], childTriangles, depth-1);
+		end else begin
+			n:= length(childTriangles);
+			setlength(childTriangles, n+1);
+			childTriangles[n]:= parentTriangle;
+		end;
+	end;
+end;
+
+procedure TGeosphere.GenerateMesh(var mesh : TGeoMesh; baseTriangleNode : integer = -1; depth : integer = -1);
+var i, n : integer;
+begin
+	if baseTriangleNode = -1 then begin
+		for i:= 0 to IcosahedronTriangles-1 do
+			GenerateMesh(mesh, i, depth);
+
+   end else begin
+		if depth = 0 then begin
+			n:= length(mesh);
+			setlength(mesh, n+3);
+			for i:= 0 to 2 do begin
+				with xNodes[ xTrianglesTreeNodes[baseTriangleNode].vertices.V[i] ] do begin
+					mesh[n+i].position:= position;
+					mesh[n+i].normal:= normal;
+					mesh[n+i].uv.S:= 0;
+					mesh[n+i].uv.T:= 0;
+				end;
+			end;
+		end else begin
+			if xTrianglesTreeNodes[baseTriangleNode].childTreeNodes[0] >= 0 then begin
+				for i:= 0 to 3 do
+					GenerateMesh(mesh, xTrianglesTreeNodes[baseTriangleNode].childTreeNodes[i], depth-1);
+			end else begin
+				n:= length(mesh);
+				setlength(mesh, n+3);
+				for i:= 0 to 2 do begin
+					with xNodes[ xTrianglesTreeNodes[baseTriangleNode].vertices.V[i] ] do begin
+						mesh[n+i].position:= position;
+						mesh[n+i].normal:= normal;
+						mesh[n+i].uv.S:= 0;
+						mesh[n+i].uv.T:= 0;
+					end;
+				end;
+         end;
+      end;
    end;
 end;
 

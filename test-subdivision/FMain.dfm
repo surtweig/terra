@@ -29,8 +29,8 @@ object MainForm: TMainForm
     Camera = Camera
     Buffer.BackgroundColor = clBlack
     Buffer.AmbientColor.Color = {0000000000000000000000000000803F}
-    Buffer.AntiAliasing = aaNone
-    FieldOfView = 148.951782226562500000
+    Buffer.AntiAliasing = aa4xHQ
+    FieldOfView = 121.890792846679700000
     Align = alClient
     Visible = False
     TabOrder = 0
@@ -130,7 +130,7 @@ object MainForm: TMainForm
       Height = 21
       AutoComplete = False
       TabOrder = 2
-      Text = '1000'
+      Text = '0'
       Items.Strings = (
         '0'
         '100'
@@ -146,7 +146,7 @@ object MainForm: TMainForm
       Height = 21
       AutoComplete = False
       TabOrder = 3
-      Text = '100'
+      Text = '0'
       Items.Strings = (
         '0'
         '50'
@@ -162,7 +162,7 @@ object MainForm: TMainForm
       Height = 21
       AutoComplete = False
       TabOrder = 4
-      Text = '10'
+      Text = '3'
       Items.Strings = (
         '0'
         '5'
@@ -186,7 +186,7 @@ object MainForm: TMainForm
       Height = 21
       AutoComplete = False
       TabOrder = 6
-      Text = '100'
+      Text = '0'
       Items.Strings = (
         '0'
         '50'
@@ -212,7 +212,7 @@ object MainForm: TMainForm
     end
     object Camera: TGLCamera
       DepthOfView = 500.000000000000000000
-      FocalLength = 50.000000000000000000
+      FocalLength = 100.000000000000000000
       NearPlaneBias = 0.100000001490116100
       Position.Coordinates = {000000000000000000008CC20000803F}
       Direction.Coordinates = {00000000000000000000803F00000000}
@@ -253,23 +253,9 @@ object MainForm: TMainForm
         Material.MaterialLibrary = Matlib
         Material.LibMaterialName = 'gray'
         Scale.Coordinates = {0000C8410000C8410000C84100000000}
+        Visible = False
         Mode = mmTriangles
         VertexMode = vmVN
-        object Walker: TGLDummyCube
-          Position.Coordinates = {77D6883E77D6083FB3414D3F0000803F}
-          OnProgress = WalkerProgress
-          CubeSize = 0.100000001490116100
-          object WalkerCamera: TGLCamera
-            DepthOfView = 300.000000000000000000
-            FocalLength = 80.000000000000000000
-            NearPlaneBias = 0.100000001490116100
-            object WalkerSphere: TGLSphere
-              Material.FrontProperties.Diffuse.Color = {0000803F0000803F000000000000803F}
-              Material.FrontProperties.Emission.Color = {8988083F00000000000000000000803F}
-              Radius = 0.009999999776482582
-            end
-          end
-        end
         object SphereA: TGLSphere
           Material.FrontProperties.Diffuse.Color = {0000803F0000803F000000000000803F}
           Material.FrontProperties.Emission.Color = {8988083F00000000000000000000803F}
@@ -284,6 +270,25 @@ object MainForm: TMainForm
           Material.FrontProperties.Diffuse.Color = {0000803F0000803F000000000000803F}
           Material.FrontProperties.Emission.Color = {8988083F00000000000000000000803F}
           Radius = 0.009999999776482582
+        end
+      end
+      object GeoContainer: TGLDummyCube
+        Scale.Coordinates = {00002041000020410000204100000000}
+        CubeSize = 1.000000000000000000
+        object Walker: TGLDummyCube
+          Position.Coordinates = {77D6883E77D6083FB3414D3F0000803F}
+          OnProgress = WalkerProgress
+          CubeSize = 0.100000001490116100
+          object WalkerCamera: TGLCamera
+            DepthOfView = 300.000000000000000000
+            FocalLength = 80.000000000000000000
+            NearPlaneBias = 0.100000001490116100
+            object WalkerSphere: TGLSphere
+              Material.FrontProperties.Diffuse.Color = {0000803F0000803F000000000000803F}
+              Material.FrontProperties.Emission.Color = {8988083F00000000000000000000803F}
+              Radius = 0.009999999776482582
+            end
+          end
         end
       end
     end

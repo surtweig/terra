@@ -8,7 +8,7 @@ uses
 	GLCrossPlatform, BaseClasses, VectorTypes, VectorGeometry, GLState, Math,
    GLMaterial, UGeosphere, GLzBuffer, GLKeyboard, GLObjects, JPEG,
    GLCustomShader, GLSLShader, GLFBORenderer, GLContext, GLRenderContextInfo, OpenGLTokens, GLUtils,
-  GLNavigator, ExtCtrls, StdCtrls, ComCtrls;
+  GLNavigator, ExtCtrls, StdCtrls, ComCtrls, Types, GLColor;
 
 const
 	A = 0.5;
@@ -64,6 +64,7 @@ type
     Label6: TLabel;
     CanyonsComboBox: TComboBox;
     ProgressBar: TProgressBar;
+    GeoContainer: TGLDummyCube;
 		procedure FormCreate(Sender: TObject);
 		procedure CadencerProgress(Sender: TObject; const deltaTime,
 			newTime: Double);
@@ -93,6 +94,7 @@ var
 	MainForm: TMainForm;
 	subvert : array of TVector3f;
 	geo : TGeosphere;
+	submeshes : array of TGLMesh;
 
 	Subdivisions, CratersCount, MountainsCount, CanyonsCount : integer;
 	NoiseFactor : single;
@@ -152,20 +154,20 @@ procedure TMainForm.CadencerProgress(Sender: TObject; const deltaTime,
   newTime: Double);
 begin
 
-	Mesh.Turn(deltaTime*1);
-	Mesh.Pitch(deltaTime);
+	//Mesh.Turn(deltaTime*1);
+	//Mesh.Pitch(deltaTime);
 
 	if IsKeyDown(VK_LEFT) then
-		Mesh.Turn(deltaTime*30);
+		GeoContainer.Turn(deltaTime*30);
 
 	if IsKeyDown(VK_RIGHT) then
-		Mesh.Turn(-deltaTime*30);
+		GeoContainer.Turn(-deltaTime*30);
 
 	if IsKeyDown(VK_UP) then
-		Mesh.Pitch(deltaTime*30);
+		GeoContainer.Pitch(deltaTime*30);
 
 	if IsKeyDown(VK_DOWN) then
-		Mesh.Pitch(-deltaTime*30);
+		GeoContainer.Pitch(-deltaTime*30);
 
    if Viewer.Camera = Camera then begin
 	 	if IsKeyDown('w') then
@@ -212,19 +214,55 @@ begin
 end;
 
 procedure TMainForm.CreateGeo;
-var vi, ti : integer;
+var vi, ti, mi, i : integer;
+	 geomesh : TGeoMesh;
+	 submesh :TGLMesh;
+
 begin
    setlength(subvert, 0);
 	geo:= TGeosphere.Create(Subdivisions, NoiseFactor, CratersCount, MountainsCount, CanyonsCount, geoProgress);
-	setlength(subvert, geo.TrianglesCount*3);
+	{setlength(subvert, geo.TrianglesCount*3);
 	for vi:= 0 to high(subvert) do
 		subvert[vi]:= geo.GetVertex(vi);
 
 	Mesh.Vertices.Clear;
    for vi := 0 to high(subvert) do
-      Mesh.Vertices.AddVertex(subvert[vi], geo.GetNormal(vi));
+      Mesh.Vertices.AddVertex(subvert[vi], geo.GetNormal(vi));}
 
-   Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount);
+   //for i:= 0 to UGeosphere.IcosahedronTriangles-1 do begin
+   //end;
+
+	//Mesh.Vertices.Clear;
+	setlength(submeshes, IcosahedronTriangles);
+	for mi:= 0 to IcosahedronTriangles-1 do begin
+		submesh:= GeoContainer.AddNewChild(TGLMesh) as TGLMesh;
+		submesh.Vertices.Clear;
+
+		submesh.VertexMode:= vmVN;
+		submesh.Mode:= mmTriangles;
+		submesh.Material.MaterialLibrary:= Matlib;
+		submesh.Material.LibMaterialName:= 'gray';
+		submeshes[mi]:= submesh;
+	  {	case mi of
+			0, 1 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 0, 0);
+			2, 3 : submesh.Material.FrontProperties.Diffuse.SetColor(0, 1, 0);
+			12, 8 : submesh.Material.FrontProperties.Diffuse.SetColor(0, 0, 1);
+			13, 10 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 1, 0);
+			14, 5 : submesh.Material.FrontProperties.Diffuse.SetColor(0, 1, 1);
+			15, 4 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 0, 1);
+			16, 7 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 1, 1);
+			17, 11 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 0.5, 0);
+			18, 9 : submesh.Material.FrontProperties.Diffuse.SetColor(0.5, 0.5, 0.5);
+			19, 6 : submesh.Material.FrontProperties.Diffuse.SetColor(0, 1, 0.5);
+		end;      }
+	  //	submesh.Material.FrontProperties.Ambient:= submesh.Material.FrontProperties.Diffuse;
+		setlength(geomesh, 0);
+		geo.GenerateMesh(geomesh, mi);
+		for i:= 0 to high(geomesh) do
+			submesh.Vertices.AddVertex(geomesh[i].position, geomesh[i].normal);//, clrRed, geomesh[i].uv);
+   end;
+
+   Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount) + ' r:' + FloatToStr(geo.xAverageRadius);
 	//geo.Free;
    setlength(subvert, 0);
 end;
@@ -298,7 +336,9 @@ begin
   begin
     Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
     Param['Scale'].AsFloat := 200.0;
-    Param['Softly'].AsInteger := 1;
+//	 Param['WaterLevel'].AsFloat := geo.xAverageRadius;
+//	 Param['Amplitude'].AsFloat := 0.1;
+	 Param['Softly'].AsInteger := 1;
     Param['EyeToLightMatrix'].AsMatrix4f := FEyeToLightMatrix;
   end;
 end;
@@ -327,7 +367,7 @@ begin
    end;
 
 	CreateGeo;
-	CreateStars;
+	//CreateStars;
 
 	ShadowShader.Enabled:= ShadowsComboBox.ItemIndex > 0;
 	ShadowFBORenderer.Active:= ShadowsComboBox.ItemIndex > 0;
@@ -362,13 +402,13 @@ begin
 	d:= WalkerCamera.AbsoluteDirection;
    r:= WalkerCamera.AbsoluteRight;
 	if IsKeyDown('w') then
-   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, deltaTime));
+		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, deltaTime*0.3));
 	if IsKeyDown('s') then
-   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, -deltaTime));
+		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, -deltaTime*0.3));
 	if IsKeyDown('a') then
-   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, deltaTime));
+		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, deltaTime*0.3));
 	if IsKeyDown('d') then
-   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, -deltaTime));
+   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, -deltaTime*0.3));
 
   {	geo.GetTriangleAtPoint(AffineVectorMake(mesh.AbsoluteToLocal(Camera.Position.AsVector)), ptA, ptB, ptC, 4);
 	SphereA.Position.SetPoint(ptA);
