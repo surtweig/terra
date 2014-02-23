@@ -310,10 +310,27 @@ begin
 	Result:= xNodes[xTriangles[tri].v[i]].normal;
 end;
 
+(*
+float saturate(float x, float p)
+{
+	if (x < 0.5)
+		return 0.5*pow(2.0*x, p);
+	else
+		return 1 - 0.5*pow(2.0*(1.0-x), p);
+}
+*)
+function saturate(x, p : single) : single;
+begin
+	if x < 0.5 then
+		Result:= 0.5*Power(2.0*x, p)
+	else
+		Result:= 1 - 0.5*Power(2.0*(1.0-x), p);
+end;
+
 function TGeosphere.GetTexUV(nodeIndex : integer; triA, triB : integer) : TVector2f;
 var vA, vB, vC1, vC2, p : TVector3f;
     iA, iB, iC1, iC2, i, j : integer;
-	 alpha1, alpha2, u, v, thetaA, theta1, theta2, area, s : single;
+	 alpha1, alpha2, beta1, beta2, u2, v2, u, v, thetaA, thetaB, theta1, theta2, area, s, lrp : single;
 	 comm : boolean;
 
 begin
@@ -370,6 +387,7 @@ begin
 	theta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC1, p)));
 	theta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC2, p)));
 
+	// A
 	s:= (alpha1+thetaA+theta1)*0.5;
 	area:= sqrt( s * (s-thetaA) * (s-theta1) * (s-alpha1) );
 
@@ -381,10 +399,37 @@ begin
 
 	v:= 2*area/alpha2;
 
-	//debugLog.Add(FloatToStr(alpha1) + #9 +  FloatToStr(alpha2));
+	// B
+	beta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vB, vC1)));
+	beta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vB, vC2)));
+	thetaB:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vB, p)));
+	theta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC1, p)));
+	theta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC2, p)));
 
-	Result.X:= u;
-	Result.Y:= v;
+	s:= (beta1+thetaB+theta1)*0.5;
+	area:= sqrt( s * (s-thetaB) * (s-theta1) * (s-beta1) );
+
+	//area = 0.5*alpha1*u
+	u2:= 2*area/beta1;
+
+	s:= (beta2+thetaB+theta2)*0.5;
+	area:= sqrt( s * (s-thetaB) * (s-theta2) * (s-beta2) );
+
+	v2:= 2*area/beta2;
+
+	debugLog.Add(FloatToStr(u2) + #9 + FloatToStr(u));
+
+	{if (thetaA < thetaB) then begin
+		Result.X:= u;
+		Result.Y:= v;
+	end else begin
+		Result.X:= 1-v2;
+		Result.Y:= 1-u2;
+	end;}
+
+	lrp:= saturate(thetaA/(thetaA+thetaB), 16.0);
+	Result.X:= Lerp(u, 1-v2, lrp);
+	Result.Y:= Lerp(v, 1-u2, lrp);
 end;
 
 function TGeosphere.GetTriangleNode(index : integer) : TVector3i;
