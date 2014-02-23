@@ -8,6 +8,12 @@ uses
 const
 	IcosahedronTriangles = 20;
 
+	IcosahedronTrianglePairs : array [0..IcosahedronTriangles-1] of TVector2i =
+	( (X : 0; Y : 1), (X : 0; Y : 1), (X : 2; Y : 3), (X : 2; Y : 3), (X : 15; Y : 4),
+	  (X : 14; Y : 5), (X : 19; Y : 6), (X : 16; Y : 7), (X : 12; Y : 8), (X : 18; Y : 9),
+	  (X : 13; Y : 10), (X : 17; Y : 11), (X : 12; Y : 8), (X : 13; Y : 10), (X : 14; Y : 5),
+	  (X : 15; Y : 4), (X : 16; Y : 7), (X : 17; Y : 11), (X : 18; Y : 9), (X : 19; Y : 6) );
+
 type
 	//TIcosahedronVertexAdjacency = array of integer;
 
@@ -20,7 +26,7 @@ type
 	//PGeoNode = ^TGeoNode;
 
   	TGeoTrianglesTreeNode = record
-      vertices : TVector3i;
+		vertices : TVector3i;
 		childTreeNodes : array [0..3] of integer;
    end;
 
@@ -56,7 +62,7 @@ type
 		function GetHeightAtPoint(p : TVector3f) : single;
 		procedure GetTriangleAtPoint(p : TVector3f; var ptA, ptB, ptC : TVector3f; depth : integer = -1);
 		procedure GetTriangleChildren(parentTriangle : integer; var childTriangles : TIntegerDynArray; depth : integer = -1);
-		procedure GenerateMesh(var mesh : TGeoMesh; baseTriangleNode : integer = -1; depth : integer = -1);
+		procedure GenerateMesh(var mesh : TGeoMesh; baseTriangleNode : integer = -1; depth : integer = -1; icoSide : integer = -1);
 
 		private
 			xNodes : array of TGeoNode;
@@ -72,6 +78,7 @@ type
 			xSubdivisionLevel : integer;
 			xPerlinNoise : TPerlin3DNoise;
 			xPerlinSpectrum : array of single;
+			xPerlinSpectrumNorm : single;
 
 			procedure xSubdivide;
 			function xAddNode : integer;
@@ -79,7 +86,7 @@ type
 			procedure xConnectNodes(node1index, node2index, level : integer);
 			procedure xSmooth;
 			procedure xTransform;
-			procedure xApplyPerlinNoise;
+			procedure xApplyPerlinNoise(startOctave : integer = 0; noiseScale : single = 1.0);
 			procedure xMakeCrater(centerNodeIndex : integer; craterRadius, craterDepth : single);
 			procedure xMakeMountain(startNodeIndex, steps : integer; height : single; dir : TVector3f);
 			function xAddTriangleTreeNode(v : TVector4i; parentIndex : integer = -1) : integer;
@@ -131,13 +138,17 @@ var i : integer;
     crSize : single;
 begin
 	xPerlinNoise:= TPerlin3DNoise.Create(0);
-	PerlinOctaves:= 8;
-	PerlinPersistence:= 0.99;
+	PerlinOctaves:= 12;
+	PerlinPersistence:= 1.5;
 	PerlinLacunarity:= 2;
 
 	setlength(xPerlinSpectrum, PerlinOctaves);
-	for i:= 0 to high(xPerlinSpectrum) do
+	xPerlinSpectrumNorm:= 0;
+	for i:= 0 to high(xPerlinSpectrum) do begin
 		xPerlinSpectrum[i]:= Power( IntPower(PerlinLacunarity, i), -PerlinPersistence );
+		xPerlinSpectrumNorm:= xPerlinSpectrumNorm + xPerlinSpectrum[i];
+	end;
+	xPerlinSpectrumNorm:= 1/xPerlinSpectrumNorm;
 
 	setlength(xNodes, 0);
 	setlength(xTriangles, 0);
@@ -159,7 +170,7 @@ begin
 		xSubdivide;
 		xSubdivisionLevel:= i;
 
-	  	//if i mod 1 = 0 then xSmooth;
+	  //	if i mod 1 = 0 then xSmooth;
 	end;
 
 	//xSmooth;
@@ -189,20 +200,24 @@ begin
   //	for i:= 1 to 3 do
 //	   xSmooth; *)
 
-	xApplyPerlinNoise;
+	//xApplyPerlinNoise;
 
 	progressCallback(0.75);
 
    for i:= 1 to aCratersCount{2000} do begin
-		crSize:= exp(RandG(0, 1))*0.02;
+		crSize:= exp(RandG(0, 1))*0.08;
 		if crSize > 2.5 then crSize:= 2.5;
 		xMakeCrater(Random(length(xNodes)), 0.005+crSize*0.15, 0.005+crSize*0.035);
-		//if i mod 501 = 0 then
-  		//	xSmooth;
-   end;
+		if i mod 201 = 0 then
+			xSmooth;
+	end;
 
-	//xSmooth;
-   progressCallback(1.0);
+	//xApplyPerlinNoise(4, 1.1);
+
+	//for i:= 1 to 10 do
+	//	xSmooth;
+
+	progressCallback(1.0);
 
 	//xBuildNormals(0.075);
 	xNewellBuildNormals;
@@ -299,25 +314,49 @@ function TGeosphere.GetTexUV(nodeIndex : integer; triA, triB : integer) : TVecto
 var vA, vB, vC1, vC2, p : TVector3f;
     iA, iB, iC1, iC2, i, j : integer;
 	 alpha1, alpha2, u, v, thetaA, theta1, theta2, area, s : single;
+	 comm : boolean;
 
 begin
 	iC1:= -1;
 	iC2:= -1;
-	for i:= 0 to 2 do begin
+	iA:= -1;
+	iB:= -1;
+{	for i:= 0 to 2 do begin
 		for j:= 0 to 2 do begin
-			if xTriangles[triA].v[i] = xTriangles[triB].v[j] then begin
+			if xTrianglesTreeNodes[triA].vertices.v[i] = xTrianglesTreeNodes[triB].vertices.v[j] then begin
 				if (xTriangles[triA].v[i] <> iC1) and (xTriangles[triA].v[i] <> iC2) then begin
 					if (iC1 = -1) then
-						iC1:= xTriangles[triA].v[i]
+						iC1:= xTrianglesTreeNodes[triA].vertices.v[i]
 					else
-						iC2:= xTriangles[triA].v[i]
+						iC2:= xTrianglesTreeNodes[triA].vertices.v[i]
 				end;
 			end;
 		end;
+	end;}
+
+	for i:= 0 to 2 do begin
+		comm:= false;
+		for j:= 0 to 2 do begin
+			if xTrianglesTreeNodes[triA].vertices.v[i] = xTrianglesTreeNodes[triB].vertices.v[j] then
+				comm:= true;
+		end;
+		if comm then begin
+			if iC1 = -1 then
+				iC1:= xTrianglesTreeNodes[triA].vertices.v[i]
+			else
+				iC2:= xTrianglesTreeNodes[triA].vertices.v[i];
+		end else
+			iA:= xTrianglesTreeNodes[triA].vertices.v[i];
 	end;
 
-	iA:= xTriangles[triA].v[0] + xTriangles[triA].v[1] + xTriangles[triA].v[2] - iC1 - iC2;
-	iB:= xTriangles[triB].v[0] + xTriangles[triB].v[1] + xTriangles[triB].v[2] - iC1 - iC2;
+	for j:= 0 to 2 do
+		if (xTrianglesTreeNodes[triB].vertices.v[j] <> iC1) and (xTrianglesTreeNodes[triB].vertices.v[j] <> iC2) then begin
+			iB:= xTrianglesTreeNodes[triB].vertices.v[j];
+			Break;
+		end;
+
+	//iA:= xTrianglesTreeNodes[triA].vertices.v[0] + xTrianglesTreeNodes[triA].vertices.v[1] + xTrianglesTreeNodes[triA].vertices.v[2] - iC1 - iC2;
+  //	iB:= xTrianglesTreeNodes[triB].vertices.v[0] + xTrianglesTreeNodes[triB].vertices.v[1] + xTrianglesTreeNodes[triB].vertices.v[2] - iC1 - iC2;
 
 	vA:= VectorNormalize(xNodes[iA].position);
 	vB:= VectorNormalize(xNodes[iB].position);
@@ -325,11 +364,11 @@ begin
 	vC2:= VectorNormalize(xNodes[iC2].position);
 	p:= VectorNormalize(xNodes[nodeIndex].position);
 
-	alpha1:= 2*Math.ArcSin(VectorLength(VectorSubtract(vA, vC1)));
-	alpha2:= 2*Math.ArcSin(VectorLength(VectorSubtract(vA, vC2)));
-	thetaA:= 2*Math.ArcSin(VectorLength(VectorSubtract(vA, p)));
-	theta1:= 2*Math.ArcSin(VectorLength(VectorSubtract(vC1, p)));
-	theta2:= 2*Math.ArcSin(VectorLength(VectorSubtract(vC2, p)));
+	alpha1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vA, vC1)));
+	alpha2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vA, vC2)));
+	thetaA:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vA, p)));
+	theta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC1, p)));
+	theta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC2, p)));
 
 	s:= (alpha1+thetaA+theta1)*0.5;
 	area:= sqrt( s * (s-thetaA) * (s-theta1) * (s-alpha1) );
@@ -341,6 +380,8 @@ begin
 	area:= sqrt( s * (s-thetaA) * (s-theta2) * (s-alpha2) );
 
 	v:= 2*area/alpha2;
+
+	//debugLog.Add(FloatToStr(alpha1) + #9 +  FloatToStr(alpha2));
 
 	Result.X:= u;
 	Result.Y:= v;
@@ -424,9 +465,11 @@ begin
 			if N12 = -1 then begin
 				N12:= xAddNode;
 				//xNodes[N12].level:= xSubdivisionLevel+1;
-         	//xNodes[N12].position:= VectorNormalize(VectorAdd(xNodes[N1].position, xNodes[N2].position));
-         	xNodes[N12].position:= VectorScale(VectorAdd(xNodes[N1].position, xNodes[N2].position), 0.5);
+         	xNodes[N12].position:= VectorNormalize(VectorAdd(xNodes[N1].position, xNodes[N2].position));
+
+				//xNodes[N12].position:= VectorScale(VectorAdd(xNodes[N1].position, xNodes[N2].position), 0.5);
 				xNodes[N12].radius:= (xNodes[N1].radius+xNodes[N2].radius)*0.5;
+				ScaleVector(xNodes[N12].position, xNodes[N12].radius);
 
 				{if xSubdivisionLevel >= 0 then begin
 					acc:= 0;
@@ -442,12 +485,12 @@ begin
 					xNodes[N12].radius:= xNodes[N12].radius/acc;
             end; }
 
-         	if (xSubdivisionLevel >= NoiseMinOctave) and (xSubdivisionLevel <= NoiseMaxOctave) then begin
+				{if (xSubdivisionLevel >= NoiseMinOctave) and (xSubdivisionLevel <= NoiseMaxOctave) then begin
             	xNodes[N12].radius:= xNodes[N12].radius + Random*NoiseFactor*0.1/power(xSubdivisionLevel, 2);
 					//AddVector(xNodes[N12].position, VectorScale(AffineVectorMake(Random-0.5, Random-0.5, Random-0.5), 0.2/(xSubdivisionLevel+1)));
 	            //xNodes[N12].radius:= VectorLength(xNodes[N12].position);
             end;
-            ScaleVector(xNodes[N12].position, xNodes[N12].radius);
+            ScaleVector(xNodes[N12].position, xNodes[N12].radius);}
 
 				xConnectNodes(N12, N1, xSubdivisionLevel+1);
 				xConnectNodes(N12, N2, xSubdivisionLevel+1);
@@ -618,12 +661,12 @@ var i, j, lev : integer;
 
 begin
 	for i:= 0 to high(xNodes) do begin
-   	acc:= xNodes[i].radius;
+		acc:= xNodes[i].radius;
 		lev:= high(xNodes[i].adjacency);
 		for j:= 0 to high(xNodes[i].adjacency[lev]) do begin
 			acc:= acc + xNodes[xNodes[i].adjacency[lev][j]].radius;
       end;
-	  	acc:= acc / (length(xNodes[i].adjacency[lev])+1);
+		acc:= acc / (length(xNodes[i].adjacency[lev])+1);
 		xNodes[i].radius:= acc;
    end;
 
@@ -665,7 +708,7 @@ begin
 	end;
 end;
 
-procedure TGeosphere.xApplyPerlinNoise;
+procedure TGeosphere.xApplyPerlinNoise(startOctave : integer = 0; noiseScale : single = 1.0);
 var i, j : integer;
 	 noisevalue, accum : single;
 	 p : TVector3f;
@@ -673,18 +716,27 @@ var i, j : integer;
 begin
 	for i:= 0 to high(xNodes) do begin
 		noisevalue:= 0;
-		accum:= 0;
-		for j:= 0 to high(xPerlinSpectrum) do begin
+
+  //		accum:= 0;
+		for j:= startOctave to high(xPerlinSpectrum) do begin
 			p:= VectorScale(xNodes[i].position, IntPower(PerlinLacunarity, j));
-			accum:= accum + xPerlinSpectrum[j];
-			noisevalue:= noisevalue + (1-abs(xPerlinNoise.Noise(p))) * xPerlinSpectrum[j];
-			//noisevalue:= noisevalue + xPerlinNoise.Noise(p) * xPerlinSpectrum[j];
+//			accum:= accum + xPerlinSpectrum[j];
+			if noiseScale > 1.0 then
+				noisevalue:= noisevalue + 2*(0.5-abs(xPerlinNoise.Noise(p))) * xPerlinSpectrum[j]
+			else
+				noisevalue:= noisevalue + xPerlinNoise.Noise(p) * xPerlinSpectrum[j];
 		end;
-		noisevalue:= noisevalue / accum;
-		//xNodes[i].radius:= xNodes[i].radius * (1 + 0.2*noisevalue);
-		xNodes[i].radius:= xNodes[i].radius + 0.1*Power(noisevalue, 8.0);
+		noisevalue:= noisevalue / xPerlinSpectrumNorm;
+
+		//xNodes[i].radius:= xNodes[i].radius * (1 + 0.8*noisevalue);
+
+	  	//noisevalue:= xPerlinNoise.Noise(VectorScale(xNodes[i].position, 1));
+
+		xNodes[i].radius:= xNodes[i].radius + 0.3*noisevalue*noiseScale;
+		//xNodes[i].radius:= xNodes[i].radius + 0.1*exp(Power(noisevalue, 8.0))*noiseScale;
 		xNodes[i].position:= VectorScale(VectorNormalize(xNodes[i].position), xNodes[i].radius);
-   end;
+	end;
+
 end;
 
 
@@ -709,7 +761,7 @@ var
 		 adjI, lev, adjNodeIndex : integer;
 		 newDepth, nD : single;
 	begin
-   	dist:= VectorLength(VectorSubtract(xNodes[nodeIndex].position, centerPosition)) * (Random*0.1+0.95);
+   	dist:= VectorLength(VectorSubtract(xNodes[nodeIndex].position, centerPosition)) * (Random*0.05+0.975);
 		if dist < craterRadius then begin
          nD:= dist/craterRadius;
 			if nD < 0.7 then
@@ -817,7 +869,7 @@ begin
 		tri:= xGetTriangleAtDir(dir, i);
 		if tri >= 0 then
 			Break;
-   end;
+	end;
 
 	intersection:= NullVector;
    if tri >= 0 then begin
@@ -909,38 +961,43 @@ begin
 	end;
 end;
 
-procedure TGeosphere.GenerateMesh(var mesh : TGeoMesh; baseTriangleNode : integer = -1; depth : integer = -1);
-var i, n : integer;
+procedure TGeosphere.GenerateMesh(var mesh : TGeoMesh; baseTriangleNode : integer = -1; depth : integer = -1; icoSide : integer = -1);
+var i, n, nodeIndex : integer;
+    uv : TVector2f;
 begin
 	if baseTriangleNode = -1 then begin
 		for i:= 0 to IcosahedronTriangles-1 do
-			GenerateMesh(mesh, i, depth);
+			GenerateMesh(mesh, i, depth, i);
 
    end else begin
 		if depth = 0 then begin
 			n:= length(mesh);
 			setlength(mesh, n+3);
 			for i:= 0 to 2 do begin
-				with xNodes[ xTrianglesTreeNodes[baseTriangleNode].vertices.V[i] ] do begin
+				nodeIndex:= xTrianglesTreeNodes[baseTriangleNode].vertices.V[i];
+				with xNodes[ nodeIndex ] do begin
 					mesh[n+i].position:= position;
 					mesh[n+i].normal:= normal;
-					mesh[n+i].uv.S:= 0;
-					mesh[n+i].uv.T:= 0;
+					uv := GetTexUV(nodeIndex, IcosahedronTrianglePairs[icoSide].X, IcosahedronTrianglePairs[icoSide].Y);
+					mesh[n+i].uv.S:= uv.X;
+					mesh[n+i].uv.T:= uv.Y;
 				end;
 			end;
 		end else begin
 			if xTrianglesTreeNodes[baseTriangleNode].childTreeNodes[0] >= 0 then begin
 				for i:= 0 to 3 do
-					GenerateMesh(mesh, xTrianglesTreeNodes[baseTriangleNode].childTreeNodes[i], depth-1);
+					GenerateMesh(mesh, xTrianglesTreeNodes[baseTriangleNode].childTreeNodes[i], depth-1, icoSide);
 			end else begin
 				n:= length(mesh);
 				setlength(mesh, n+3);
 				for i:= 0 to 2 do begin
-					with xNodes[ xTrianglesTreeNodes[baseTriangleNode].vertices.V[i] ] do begin
+					nodeIndex:= xTrianglesTreeNodes[baseTriangleNode].vertices.V[i];
+					with xNodes[ nodeIndex ] do begin
 						mesh[n+i].position:= position;
 						mesh[n+i].normal:= normal;
-						mesh[n+i].uv.S:= 0;
-						mesh[n+i].uv.T:= 0;
+						uv := GetTexUV(nodeIndex, IcosahedronTrianglePairs[icoSide].X, IcosahedronTrianglePairs[icoSide].Y);
+						mesh[n+i].uv.S:= uv.X;
+						mesh[n+i].uv.T:= uv.Y;
 					end;
 				end;
          end;

@@ -8,7 +8,8 @@ uses
 	GLCrossPlatform, BaseClasses, VectorTypes, VectorGeometry, GLState, Math,
    GLMaterial, UGeosphere, GLzBuffer, GLKeyboard, GLObjects, JPEG,
    GLCustomShader, GLSLShader, GLFBORenderer, GLContext, GLRenderContextInfo, OpenGLTokens, GLUtils,
-  GLNavigator, ExtCtrls, StdCtrls, ComCtrls, Types, GLColor;
+  GLNavigator, ExtCtrls, StdCtrls, ComCtrls, Types, GLColor, GLAsmShader,
+  GLPhongShader, GLSLDiffuseSpecularShader;
 
 const
 	A = 0.5;
@@ -65,6 +66,7 @@ type
     CanyonsComboBox: TComboBox;
     ProgressBar: TProgressBar;
     GeoContainer: TGLDummyCube;
+    GLSLDiffuseSpecularShader1: TGLSLDiffuseSpecularShader;
 		procedure FormCreate(Sender: TObject);
 		procedure CadencerProgress(Sender: TObject; const deltaTime,
 			newTime: Double);
@@ -217,7 +219,7 @@ procedure TMainForm.CreateGeo;
 var vi, ti, mi, i : integer;
 	 geomesh : TGeoMesh;
 	 submesh :TGLMesh;
-
+    vd : TVertexData;
 begin
    setlength(subvert, 0);
 	geo:= TGeosphere.Create(Subdivisions, NoiseFactor, CratersCount, MountainsCount, CanyonsCount, geoProgress);
@@ -238,11 +240,10 @@ begin
 		submesh:= GeoContainer.AddNewChild(TGLMesh) as TGLMesh;
 		submesh.Vertices.Clear;
 
-		submesh.VertexMode:= vmVN;
+		submesh.VertexMode:= vmVNT;
 		submesh.Mode:= mmTriangles;
 		submesh.Material.MaterialLibrary:= Matlib;
 		submesh.Material.LibMaterialName:= 'gray';
-		submeshes[mi]:= submesh;
 	  {	case mi of
 			0, 1 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 0, 0);
 			2, 3 : submesh.Material.FrontProperties.Diffuse.SetColor(0, 1, 0);
@@ -257,10 +258,19 @@ begin
 		end;      }
 	  //	submesh.Material.FrontProperties.Ambient:= submesh.Material.FrontProperties.Diffuse;
 		setlength(geomesh, 0);
-		geo.GenerateMesh(geomesh, mi);
-		for i:= 0 to high(geomesh) do
-			submesh.Vertices.AddVertex(geomesh[i].position, geomesh[i].normal);//, clrRed, geomesh[i].uv);
-   end;
+		geo.GenerateMesh(geomesh, mi, -1, mi);
+		for i:= 0 to high(geomesh) do begin
+			vd.coord:= geomesh[i].position;
+			vd.normal:= geomesh[i].normal;
+			vd.textCoord:= geomesh[i].uv;
+			//vd.textCoord.S:= Random;
+			//vd.textCoord.T:= Random;
+			submesh.Vertices.AddVertex(vd);
+			//submesh.Vertices.AddVertex(geomesh[i].position, geomesh[i].normal);
+		end;
+			//submesh.Vertices.AddVertex(geomesh[i].position, geomesh[i].normal, clrRed, geomesh[i].uv);
+		submeshes[mi]:= submesh;
+	end;
 
    Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount) + ' r:' + FloatToStr(geo.xAverageRadius);
 	//geo.Free;
@@ -334,8 +344,9 @@ procedure TMainForm.ShadowShaderApply(Shader: TGLCustomGLSLShader);
 begin
   with Shader, Matlib do
   begin
-    Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
-    Param['Scale'].AsFloat := 200.0;
+	 Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
+	 Param['MainTexture'].AsTexture2D[1] := TextureByName('tex1024');
+	 Param['Scale'].AsFloat := 200.0;
 //	 Param['WaterLevel'].AsFloat := geo.xAverageRadius;
 //	 Param['Amplitude'].AsFloat := 0.1;
 	 Param['Softly'].AsInteger := 1;
@@ -348,6 +359,7 @@ begin
   with Shader, Matlib do
   begin
     Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
+	 Param['MainTexture'].AsTexture2D[1] := TextureByName('tex1024');
     //Param['LightPosition'].AsVector4f := ShadowCamera.Position.AsVector;
   end;
 end;
@@ -402,13 +414,13 @@ begin
 	d:= WalkerCamera.AbsoluteDirection;
    r:= WalkerCamera.AbsoluteRight;
 	if IsKeyDown('w') then
-		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, deltaTime*0.3));
+		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, deltaTime));
 	if IsKeyDown('s') then
-		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, -deltaTime*0.3));
+		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(d, -deltaTime));
 	if IsKeyDown('a') then
-		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, deltaTime*0.3));
+		Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, deltaTime));
 	if IsKeyDown('d') then
-   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, -deltaTime*0.3));
+   	Walker.AbsolutePosition:= VectorAdd(Walker.AbsolutePosition, VectorScale(r, -deltaTime));
 
   {	geo.GetTriangleAtPoint(AffineVectorMake(mesh.AbsoluteToLocal(Camera.Position.AsVector)), ptA, ptB, ptC, 4);
 	SphereA.Position.SetPoint(ptA);
