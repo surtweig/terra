@@ -330,7 +330,8 @@ end;
 function TGeosphere.GetTexUV(nodeIndex : integer; triA, triB : integer) : TVector2f;
 var vA, vB, vC1, vC2, p : TVector3f;
     iA, iB, iC1, iC2, i, j : integer;
-	 alpha1, alpha2, beta1, beta2, u2, v2, u, v, thetaA, thetaB, theta1, theta2, area, s, lrp : single;
+	 alpha1, alpha2, beta1, beta2, u, v, u2, v2, u3, v3, u4, v4, thetaA, thetaB, theta1, theta2, area, s, lrp : single;
+	 r1, r2 : TVector2f;
 	 comm : boolean;
 
 begin
@@ -338,18 +339,6 @@ begin
 	iC2:= -1;
 	iA:= -1;
 	iB:= -1;
-{	for i:= 0 to 2 do begin
-		for j:= 0 to 2 do begin
-			if xTrianglesTreeNodes[triA].vertices.v[i] = xTrianglesTreeNodes[triB].vertices.v[j] then begin
-				if (xTriangles[triA].v[i] <> iC1) and (xTriangles[triA].v[i] <> iC2) then begin
-					if (iC1 = -1) then
-						iC1:= xTrianglesTreeNodes[triA].vertices.v[i]
-					else
-						iC2:= xTrianglesTreeNodes[triA].vertices.v[i]
-				end;
-			end;
-		end;
-	end;}
 
 	for i:= 0 to 2 do begin
 		comm:= false;
@@ -372,9 +361,6 @@ begin
 			Break;
 		end;
 
-	//iA:= xTrianglesTreeNodes[triA].vertices.v[0] + xTrianglesTreeNodes[triA].vertices.v[1] + xTrianglesTreeNodes[triA].vertices.v[2] - iC1 - iC2;
-  //	iB:= xTrianglesTreeNodes[triB].vertices.v[0] + xTrianglesTreeNodes[triB].vertices.v[1] + xTrianglesTreeNodes[triB].vertices.v[2] - iC1 - iC2;
-
 	vA:= VectorNormalize(xNodes[iA].position);
 	vB:= VectorNormalize(xNodes[iB].position);
 	vC1:= VectorNormalize(xNodes[iC1].position);
@@ -387,7 +373,7 @@ begin
 	theta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC1, p)));
 	theta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC2, p)));
 
-	// A
+	// A -----------------------------------------------------------
 	s:= (alpha1+thetaA+theta1)*0.5;
 	area:= sqrt( s * (s-thetaA) * (s-theta1) * (s-alpha1) );
 
@@ -399,12 +385,10 @@ begin
 
 	v:= 2*area/alpha2;
 
-	// B
+	// B -----------------------------------------------------------
 	beta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vB, vC1)));
 	beta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vB, vC2)));
 	thetaB:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vB, p)));
-	theta1:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC1, p)));
-	theta2:= 2*Math.ArcSin(0.5*VectorLength(VectorSubtract(vC2, p)));
 
 	s:= (beta1+thetaB+theta1)*0.5;
 	area:= sqrt( s * (s-thetaB) * (s-theta1) * (s-beta1) );
@@ -417,7 +401,15 @@ begin
 
 	v2:= 2*area/beta2;
 
-	debugLog.Add(FloatToStr(u2) + #9 + FloatToStr(u));
+	// C1 -----------------------------------------------------------
+	u3:= u2;
+	v3:= u;
+
+	// C2
+	u4:= v;
+	v4:= v2;
+
+	//debugLog.Add(FloatToStr(u2) + #9 + FloatToStr(u));
 
 	{if (thetaA < thetaB) then begin
 		Result.X:= u;
@@ -427,9 +419,27 @@ begin
 		Result.Y:= 1-u2;
 	end;}
 
-	lrp:= saturate(thetaA/(thetaA+thetaB), 16.0);
-	Result.X:= Lerp(u, 1-v2, lrp);
-	Result.Y:= Lerp(v, 1-u2, lrp);
+	lrp:= saturate(thetaA/(thetaA+thetaB), 8.0);
+	r1.X:= Lerp(u, 1-v2, lrp);
+	r1.Y:= Lerp(v, 1-u2, lrp);
+
+	lrp:= saturate(theta1/(theta1+theta2), 8.0);
+	r2.X:= Lerp(v3, 1-v4, lrp);
+	r2.Y:= Lerp(1-u3, u4, lrp);
+
+	lrp:= saturate(min(thetaA, thetaB)/( min(thetaA, thetaB) + min(theta1, theta2)), 8.0);
+	Result.X:= Lerp(r1.X, r2.X, lrp);
+	Result.Y:= Lerp(r1.Y, r2.Y, lrp);
+
+{	Result.X:= (u*thetaA + (1-v2)*thetaB + v3*theta1 + (1-v4)*theta2) / (thetaA + thetaB + theta1 + theta2);
+	Result.Y:= (v*thetaA + (1-u2)*thetaB + (1-u3)*theta1 + u4*theta2) / (thetaA + thetaB + theta1 + theta2);}
+
+  {	Result.X:= (u*thetaA + (1-v2)*thetaB) / (thetaA + thetaB);
+	Result.Y:= (v*thetaA + (1-u2)*thetaB) / (thetaA + thetaB);}
+
+{	Result.X:= (v3*theta1 + (1-v4)*theta2) / (theta1 + theta2);
+	Result.Y:= ((1-u3)*theta1 + u4*theta2) / (theta1 + theta2); }
+
 end;
 
 function TGeosphere.GetTriangleNode(index : integer) : TVector3i;
