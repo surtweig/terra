@@ -9,7 +9,7 @@ uses
    GLMaterial, UGeosphere, GLzBuffer, GLKeyboard, GLObjects, JPEG,
    GLCustomShader, GLSLShader, GLFBORenderer, GLContext, GLRenderContextInfo, OpenGLTokens, GLUtils,
   GLNavigator, ExtCtrls, StdCtrls, ComCtrls, Types, GLColor, GLAsmShader,
-  GLPhongShader, GLSLDiffuseSpecularShader;
+  GLPhongShader, GLSLDiffuseSpecularShader, GLTexture, GR32, GR32_Image;
 
 const
 	A = 0.5;
@@ -67,13 +67,12 @@ type
     ProgressBar: TProgressBar;
     GeoContainer: TGLDummyCube;
     GLSLDiffuseSpecularShader1: TGLSLDiffuseSpecularShader;
+    ProgressMemo: TMemo;
 		procedure FormCreate(Sender: TObject);
 		procedure CadencerProgress(Sender: TObject; const deltaTime,
 			newTime: Double);
-    procedure ShadowShaderApply(Shader: TGLCustomGLSLShader);
     procedure PrepareShadowMappingRender(Sender: TObject;
       var rci: TRenderContextInfo);
-    procedure ShadowShaderInitialize(Shader: TGLCustomGLSLShader);
     procedure ShadowFBORendererBeforeRender(Sender: TObject;
       var rci: TRenderContextInfo);
     procedure ShadowFBORendererAfterRender(Sender: TObject;
@@ -81,6 +80,9 @@ type
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure WalkerProgress(Sender: TObject; const deltaTime, newTime: Double);
     procedure StartBtnClick(Sender: TObject);
+    procedure ShadowShaderApplyEx(Shader: TGLCustomGLSLShader; Sender: TObject);
+    procedure ShadowShaderInitializeEx(Shader: TGLCustomGLSLShader;
+      Sender: TObject);
 	private
     FBiasMatrix: TMatrix;
     FLightModelViewMatrix: TMatrix;
@@ -146,9 +148,10 @@ begin
    end;
 end;
 
-procedure geoProgress(progress : single);
+procedure geoProgress(progress : single; msg : string);
 begin
 	MainForm.ProgressBar.Position:= round(progress*100);
+	MainForm.ProgressMemo.Lines.Add(msg);
 	Application.ProcessMessages;
 end;
 
@@ -206,11 +209,8 @@ var
 	n : TVector3f;
 
 begin
-	ShadowShader.VertexProgram.LoadFromFile('shadowmap_vp.glsl');
-	ShadowShader.FragmentProgram.LoadFromFile('shadowmap_fp.glsl');
-	ShadowShader.Enabled := true;
 
-   FBiasMatrix := CreateScaleAndTranslationMatrix(VectorMake(0.5, 0.5, 0.5), VectorMake(0.5, 0.5, 0.5));
+	FBiasMatrix := CreateScaleAndTranslationMatrix(VectorMake(0.5, 0.5, 0.5), VectorMake(0.5, 0.5, 0.5));
 
 	Sun.Position:= ShadowCamera.Position;
 end;
@@ -219,22 +219,42 @@ procedure TMainForm.CreateGeo;
 var vi, ti, mi, i : integer;
 	 geomesh : TGeoMesh;
 	 submesh :TGLMesh;
-    vd : TVertexData;
+	 vd : TVertexData;
+
+	 blankmat : TGLMaterial;
+	 bmp32 : TBitmap32;
 begin
-   setlength(subvert, 0);
+	setlength(subvert, 0);
 	geo:= TGeosphere.Create(Subdivisions, NoiseFactor, CratersCount, MountainsCount, CanyonsCount, geoProgress);
 	{setlength(subvert, geo.TrianglesCount*3);
 	for vi:= 0 to high(subvert) do
 		subvert[vi]:= geo.GetVertex(vi);
 
 	Mesh.Vertices.Clear;
-   for vi := 0 to high(subvert) do
-      Mesh.Vertices.AddVertex(subvert[vi], geo.GetNormal(vi));}
+	for vi := 0 to high(subvert) do
+		Mesh.Vertices.AddVertex(subvert[vi], geo.GetNormal(vi));}
 
-   //for i:= 0 to UGeosphere.IcosahedronTriangles-1 do begin
-   //end;
+	//for i:= 0 to UGeosphere.IcosahedronTriangles-1 do begin
+	//end;
 
 	//Mesh.Vertices.Clear;
+	for i:= 0 to high(IcosahedronTrianglePairs) do begin
+		with Matlib.Materials.Add do begin
+			Name:= 'tripair'+IntToStr(i);
+			Material.Texture.ImageClassName:= 'TGLBlankImage';
+			TGLBlankImage(Material.Texture.Image).Height:= 1024;
+			TGLBlankImage(Material.Texture.Image).Width:= 1024;
+			Material.Texture.Disabled:= false;
+			Material.Texture.Image.GetBitmap32.Assign(geo.GetTexture(i));
+			Material.Texture.TextureWrap:= twNone;
+			Shader:= ShadowShader;
+		end;
+	end;
+
+	ShadowShader.VertexProgram.LoadFromFile('shadowmap_vp.glsl');
+	ShadowShader.FragmentProgram.LoadFromFile('shadowmap_fp.glsl');
+	ShadowShader.Enabled := true;
+
 	setlength(submeshes, IcosahedronTriangles);
 	for mi:= 0 to IcosahedronTriangles-1 do begin
 		submesh:= GeoContainer.AddNewChild(TGLMesh) as TGLMesh;
@@ -243,7 +263,7 @@ begin
 		submesh.VertexMode:= vmVNT;
 		submesh.Mode:= mmTriangles;
 		submesh.Material.MaterialLibrary:= Matlib;
-		submesh.Material.LibMaterialName:= 'gray';
+		submesh.Material.LibMaterialName:= 'tripair' + IntToStr(IcosahedronTriangleToPairsMap[mi]);//'gray';
 	  {	case mi of
 			0, 1 : submesh.Material.FrontProperties.Diffuse.SetColor(1, 0, 0);
 			2, 3 : submesh.Material.FrontProperties.Diffuse.SetColor(0, 1, 0);
@@ -272,9 +292,16 @@ begin
 		submeshes[mi]:= submesh;
 	end;
 
-   Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount) + ' r:' + FloatToStr(geo.xAverageRadius);
+   Caption:= 'tris:'+IntToStr(length(subvert) div 3) + ' nodes:' + IntToStr(geo.NodesCount) + ' r:' + FloatToStr(geo.AverageRadius);
 	//geo.Free;
-   setlength(subvert, 0);
+	setlength(subvert, 0);
+
+	{bmp32:= TBitmap32.Create;
+	bmp32.SetSize(1024, 1024);
+	bmp32.FillRect(0, 0, 1024, 1024, clRed32);
+
+	blankmat:= Matlib.Materials.GetLibMaterialByName('blank').Material;
+	blankmat.Texture.Image.GetBitmap32.Assign(bmp32);}
 end;
 
 procedure TMainForm.CreateStars;
@@ -334,33 +361,33 @@ begin
   // push geometry back a bit, prevents false self-shadowing
   with rci.GLStates do
   begin
-    Enable(stPolygonOffsetFill);
-    PolygonOffsetFactor := 4;
-    PolygonOffsetUnits := 4;
+	 Enable(stPolygonOffsetFill);
+	 PolygonOffsetFactor := 4;
+	 PolygonOffsetUnits := 4;
   end;
 end;
 
-procedure TMainForm.ShadowShaderApply(Shader: TGLCustomGLSLShader);
+procedure TMainForm.ShadowShaderApplyEx(Shader: TGLCustomGLSLShader; Sender: TObject);
 begin
   with Shader, Matlib do
   begin
 	 Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
-	 Param['MainTexture'].AsTexture2D[1] := TextureByName('tex1024');
+	 Param['MainTexture'].AsTexture2D[1] := TGLLibMaterial(Sender).Material.Texture;//TextureByName('tex1024');
 	 Param['Scale'].AsFloat := 200.0;
 //	 Param['WaterLevel'].AsFloat := geo.xAverageRadius;
 //	 Param['Amplitude'].AsFloat := 0.1;
 	 Param['Softly'].AsInteger := 1;
-    Param['EyeToLightMatrix'].AsMatrix4f := FEyeToLightMatrix;
+	 Param['EyeToLightMatrix'].AsMatrix4f := FEyeToLightMatrix;
   end;
 end;
 
-procedure TMainForm.ShadowShaderInitialize(Shader: TGLCustomGLSLShader);
+procedure TMainForm.ShadowShaderInitializeEx(Shader: TGLCustomGLSLShader; Sender: TObject);
 begin
   with Shader, Matlib do
   begin
-    Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
-	 Param['MainTexture'].AsTexture2D[1] := TextureByName('tex1024');
-    //Param['LightPosition'].AsVector4f := ShadowCamera.Position.AsVector;
+	 Param['ShadowMap'].AsTexture2D[0] := TextureByName(ShadowFBORenderer.DepthTextureName);
+	 Param['MainTexture'].AsTexture2D[1] := TGLLibMaterial(Sender).Material.Texture;//TextureByName('tex1024');
+	 //Param['LightPosition'].AsVector4f := ShadowCamera.Position.AsVector;
   end;
 end;
 
