@@ -51,12 +51,12 @@ class TPerlin3DNoise
 	
 	public float Noise(Vector2 v)
 	{
-		int ix = Mathf.Floor(v.x);
+		int ix = Mathf.FloorToInt(v.x);
 		float fx0 = v.x - ix;
 		float fx1 = fx0 - 1f;
 		float wx = Smooth(fx0);
 
-		int iy = Mathf.Floor(v.y);
+		int iy = Mathf.FloorToInt(v.y);
 		float fy0 = v.y - iy;
 		float fy1 = fy0 - 1f;
 		float wy = Smooth(fy0);
@@ -72,17 +72,17 @@ class TPerlin3DNoise
 	
 	public float Noise(Vector3 v)
 	{
-		int ix = Mathf.Floor(v.x);
+		int ix = Mathf.FloorToInt(v.x);
 		float fx0 = v.x - ix;
 		float fx1 = fx0- 1f;
 		float wx = Smooth(fx0);
 		
-		int iy = Mathf.Floor(v.y);
+		int iy = Mathf.FloorToInt(v.y);
 		float fy0 = v.y - iy;
 		float fy1 = fy0 - 1f;
 		float wy = Smooth(fy0);
 		
-		int iz = Mathf.Floor(v.z);
+		int iz = Mathf.FloorToInt(v.z);
 		float fz0 = v.z - iz;
 		float fz1 = fz0 - 1f;
 		float wz = Smooth(fz0);
@@ -109,13 +109,13 @@ class TPerlin3DNoise
 
 	private float Lattice(int ix, int iy, int iz, float fx, float fy, float fz)
 	{
-		int g = FPermutations[(ix+FPermutations[(iy+FPermutations[iz && cMask]) && cMask]) && cMask]*3;
+		int g = FPermutations[(ix+FPermutations[(iy+FPermutations[iz & cMask]) & cMask]) & cMask]*3;
 		return FGradients[g]*fx + FGradients[g+1]*fy + FGradients[g+2]*fz;
 	}
 	
 	private float Lattice(int ix, int iy, float fx, float fy)
 	{
-		int g = FPermutations[(ix+FPermutations[(iy+FPermutations[0]) && cMask]) && cMask]*3;
+		int g = FPermutations[(ix+FPermutations[(iy+FPermutations[0]) & cMask]) & cMask]*3;
 		return FGradients[g]*fx + FGradients[g+1]*fy;
 	}
 	
