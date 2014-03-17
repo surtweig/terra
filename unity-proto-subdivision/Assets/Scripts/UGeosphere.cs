@@ -118,7 +118,7 @@ public class TGeosphere {
 		}
 	}
 	
-	public Mesh GenerateMesh(int depth = -1, int region = -1, bool generateUV = false)
+	public Mesh GenerateMesh(int region = -1, bool generateUV = false, int depth = -1)
 	{
 		TMutableGeoMesh geomesh = new TMutableGeoMesh();
 		xCollectVertexes(geomesh, region, depth);
@@ -208,6 +208,15 @@ public class TGeosphere {
 			xNodes[i].normal = normal;
 		}
 	}
+	
+	public void ApplyPerlinNoise()//(int method, float scale, int startOctave, int finishOctave, float[] spectrum)
+	{
+		foreach (TGeoNode node in xNodes)
+		{
+			node.position *= 1f + xPerlinNoise.Noise( node.position * 10f ) * 0.1f;
+			node.radius = node.position.magnitude;
+		}
+	}
 
 	protected void xCollectVertexes(TMutableGeoMesh mesh, int baseTriangleNode = -1, int depth = -1)
 	{
@@ -263,11 +272,11 @@ public class TGeosphere {
 			xConnectNodes(subNodes[1], subNodes[2], xSubdivisionLevel+1);
 			xConnectNodes(subNodes[2], subNodes[0], xSubdivisionLevel+1);
 			
-			//     /\
-			//    /  \
-			//   /----\
-			//  / \  / \
-			// /___\/___\
+			//      /\
+			//     /  \
+			//    /----\
+			//   / \  / \
+			//  /___\/___\
 			
 			xAddTriTreeNode( new int[3] { xTriTree[treeNodeIndex].vertices[0], subNodes[0], subNodes[2] }, treeNodeIndex );
 			xAddTriTreeNode( new int[3] { xTriTree[treeNodeIndex].vertices[1], subNodes[1], subNodes[0] }, treeNodeIndex );
@@ -353,13 +362,24 @@ public class TGeosphere {
 
 public class UGeosphere : MonoBehaviour {
 	
+	public GameObject GeosphereRegionPrefab;
+	
 	private TGeosphere geo;
 	
 	void Start () {
 		geo = new TGeosphere();
 		geo.BuildIcosahedron();
 		geo.Subdivide(6);
-		GetComponent<MeshFilter>().mesh = geo.GenerateMesh();
+		geo.ApplyPerlinNoise();
+		//GetComponent<MeshFilter>().mesh = geo.GenerateMesh();
+		
+		for (int region = 0; region < TGeosphere.IcosahedronTriangles; region++)
+		{
+			GameObject regionObject = Instantiate(GeosphereRegionPrefab, transform.position, transform.rotation) as GameObject;
+			regionObject.GetComponent<MeshFilter>().mesh = geo.GenerateMesh(region);
+			regionObject.transform.parent = transform;
+		}
+		
 	}
 	
 	void Update () {
