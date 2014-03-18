@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 
 public class TGeoNode
 {
@@ -56,6 +57,22 @@ public class TMutableGeoMesh
 	}
 }
 
+public class MeshContainer
+{
+	public Vector3[] vertices;
+	public Vector3[] normals;
+	public int[] triangles;
+	
+	public Mesh MakeMesh()
+	{
+		Mesh mesh = new Mesh();
+		mesh.vertices = vertices;
+		mesh.normals = normals;
+		mesh.triangles = triangles;
+		return mesh;
+	}
+}
+
 public class TGeosphere {
 	
 	// -------------------------------------------------------
@@ -70,6 +87,16 @@ public class TGeosphere {
 		xNodes.Clear();
 		xTriTree.Clear();
 		xSubdivisionLevel = 0;
+	}
+	
+	public int SubdivisionLevel
+	{
+		get { return xSubdivisionLevel; }
+	}
+	
+	public int Seed
+	{
+		get { return xSeed; }
 	}
 
 	public void BuildIcosahedron()
@@ -118,7 +145,19 @@ public class TGeosphere {
 		}
 	}
 	
-	public Mesh GenerateMesh(int region = -1, bool generateUV = false, int depth = -1)
+	public bool SubdivideThreaded(int targetSubdivisionLevel = 1)
+	{
+		if (xSubdivisionLevel < targetSubdivisionLevel && !xSubdivisionThreadIsRunning)
+		{
+			Thread thread = new Thread(TGeosphere.SubdivisionThread);
+			xSubdivisionThreadIsRunning = true;
+			thread.Start(this);
+			return true;
+		}
+		else return false;
+	}
+	
+	public MeshContainer GenerateMesh(int region = -1, bool generateUV = false, int depth = -1)
 	{
 		TMutableGeoMesh geomesh = new TMutableGeoMesh();
 		xCollectVertexes(geomesh, region, depth);
@@ -136,14 +175,21 @@ public class TGeosphere {
 			normals.Add(xNodes[nodeIndex].normal);
 		}
 		
-		Debug.Log(vertices.Count);
-		Debug.Log(geomesh.triangles.Count);
+		//Debug.Log(vertices.Count);
+		//Debug.Log(geomesh.triangles.Count);
 
-		Mesh mesh = new Mesh();
+		/*Mesh mesh = new Mesh();
 		mesh.vertices = vertices.ToArray();
 		mesh.normals = normals.ToArray();
 		mesh.triangles = geomesh.triangles.ToArray();
-		return mesh;
+		return mesh;*/
+		
+		MeshContainer meshContainer = new MeshContainer();
+		meshContainer.vertices = vertices.ToArray();
+		meshContainer.normals = normals.ToArray();
+		meshContainer.triangles = geomesh.triangles.ToArray();
+		
+		return meshContainer;
 	}
 	
 	public void BuildNormals()
@@ -213,7 +259,7 @@ public class TGeosphere {
 	{
 		foreach (TGeoNode node in xNodes)
 		{
-			node.position *= 1f + xPerlinNoise.Noise( node.position * 10f ) * 0.1f;
+			node.position = node.position.normalized * (1f + xPerlinNoise.Noise( node.position.normalized * 10f ) * 0.1f);
 			node.radius = node.position.magnitude;
 		}
 	}
@@ -303,6 +349,8 @@ public class TGeosphere {
 	private int xSubdivisionLevel = 0;
 	private int xSeed;
 	private TPerlin3DNoise xPerlinNoise;
+	protected bool xSubdivisionThreadIsRunning = false;
+	public MeshContainer[] RegionsMeshes = new MeshContainer[IcosahedronTriangles];
 	
 	private int xAddNode(TGeoNode node)
 	{
@@ -358,31 +406,57 @@ public class TGeosphere {
 		return -1;
 	}
 	
+	public static void SubdivisionThread(object thisGeo)
+	{
+		(thisGeo as TGeosphere).Subdivide();
+		(thisGeo as TGeosphere).ApplyPerlinNoise();
+		for (int region = 0; region < IcosahedronTriangles; region++)
+			(thisGeo as TGeosphere).RegionsMeshes[region] = (thisGeo as TGeosphere).GenerateMesh(region);
+		(thisGeo as TGeosphere).xSubdivisionThreadIsRunning = false;
+	}
+	
 }
+
 
 public class UGeosphere : MonoBehaviour {
 	
 	public GameObject GeosphereRegionPrefab;
 	
 	private TGeosphere geo;
+	private int currentSubdivisionLevel = 0;
+	private List<GameObject> regions = new List<GameObject>();
 	
 	void Start () {
 		geo = new TGeosphere();
 		geo.BuildIcosahedron();
-		geo.Subdivide(6);
-		geo.ApplyPerlinNoise();
+		
+		//geo.Subdivide(6);
+		//geo.ApplyPerlinNoise();
+		
 		//GetComponent<MeshFilter>().mesh = geo.GenerateMesh();
 		
 		for (int region = 0; region < TGeosphere.IcosahedronTriangles; region++)
 		{
 			GameObject regionObject = Instantiate(GeosphereRegionPrefab, transform.position, transform.rotation) as GameObject;
-			regionObject.GetComponent<MeshFilter>().mesh = geo.GenerateMesh(region);
+			//regionObject.GetComponent<MeshFilter>().mesh = geo.GenerateMesh(region);
 			regionObject.transform.parent = transform;
+			regions.Add(regionObject);
 		}
 		
 	}
 	
 	void Update () {
-	
+		transform.RotateAround(new Vector3(0f, 1f, 0f), Time.deltaTime*0.1f);
+		
+		if (currentSubdivisionLevel != geo.SubdivisionLevel)
+		{
+			for (int region = 0; region < regions.Count; region++)
+			{
+				regions[region].GetComponent<MeshFilter>().mesh = geo.RegionsMeshes[region].MakeMesh();//GenerateMesh(region);
+			}
+			currentSubdivisionLevel = geo.SubdivisionLevel;
+		}
+		
+		geo.SubdivideThreaded(7);
 	}
 }

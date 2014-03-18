@@ -43,7 +43,7 @@
 			{
 				VSOut o;
 				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
-				o.norm = v.normal;
+				o.norm = mul((float3x3)_Object2World, v.normal);
 				o.uv = v.texcoord.xy;
  
 				TRANSFER_VERTEX_TO_FRAGMENT(o);
@@ -55,10 +55,10 @@
 			{
 				float3 lightColor = _LightColor0.rgb;
 				float3 lightDir = _WorldSpaceLightPos0;
-				float4 colorTex = tex2D(_MainTex, i.uv.xy * float2(25.0f));
+				float4 colorTex = tex2D(_MainTex, i.uv.xy);
 				float atten = LIGHT_ATTENUATION(i);
-				float3 N = i.norm;//float3(0.0f, 1.0f, 0.0f);
-				float NL = saturate(dot(N, lightDir));
+				float3 N = i.norm;
+				float NL = pow(max(dot(N, lightDir)-0.01, 0), 0.5);
  
 				float3 color = colorTex.rgb * lightColor * NL * atten;
 				return float4(color, colorTex.a);
