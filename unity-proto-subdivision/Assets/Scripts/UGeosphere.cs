@@ -9,6 +9,7 @@ public class TGeoNode
 	public Vector3 normal;
 	public float radius;
 	public List<int[]> adjacency;
+	public bool transformed = false;
 	
 	public TGeoNode()
 	{
@@ -80,6 +81,9 @@ public class TGeosphere {
 	{
 		xSeed = seed;
 		xPerlinNoise = new TPerlin3DNoise(xSeed);
+		
+		xFBM = new OaxoaSubtractiveFBM(xPerlinNoise, 10);
+		xFBM.SetSpectrum(10, 1f);
 	}
 	
 	public void Clear()
@@ -259,8 +263,13 @@ public class TGeosphere {
 	{
 		foreach (TGeoNode node in xNodes)
 		{
-			node.position = node.position.normalized * (1f + xPerlinNoise.Noise( node.position.normalized * 10f ) * 0.1f);
-			node.radius = node.position.magnitude;
+			if (!node.transformed)
+			{
+				float n = xFBM.Value(0.2f*node.position.normalized); //xPerlinNoise.Noise( node.position.normalized * 10f );
+				node.position = node.position.normalized * (1f + 0.5f*n);
+				node.radius = node.position.magnitude;
+				node.transformed = true;
+			}
 		}
 	}
 
@@ -349,6 +358,7 @@ public class TGeosphere {
 	private int xSubdivisionLevel = 0;
 	private int xSeed;
 	private TPerlin3DNoise xPerlinNoise;
+	private FBM xFBM;
 	protected bool xSubdivisionThreadIsRunning = false;
 	public MeshContainer[] RegionsMeshes = new MeshContainer[IcosahedronTriangles];
 	

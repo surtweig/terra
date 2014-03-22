@@ -12,7 +12,7 @@ public class TPerlin3DNoise
 	private int[] FPermutations = new int[cPERLIN_TABLE_SIZE];
 	private float[] FGradients = new float[cPERLIN_TABLE_SIZE*3];
 	
-	public TPerlin3DNoise(int randomSeed)
+	public TPerlin3DNoise(int randomSeed = 0)
 	{
 		Initialize(randomSeed);
 	}
