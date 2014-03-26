@@ -10,6 +10,7 @@ public class FBM
 	public float[] Spectrum;
 	
 	protected TPerlin3DNoise xNoise;
+	protected bool xSpectrumAutoNormalize = true;
 	
 	public FBM(TPerlin3DNoise noise)
 	{
@@ -28,7 +29,8 @@ public class FBM
 		{
 			Spectrum[i] = Mathf.Pow(Lacunarity, -i*persistence);
 		}
-		NormalizeSpectrum();
+		if (xSpectrumAutoNormalize)
+			NormalizeSpectrum();
 	}
 	
 	public void NormalizeSpectrum()
@@ -52,7 +54,7 @@ public class FBM
 		
 		for (int i = 0; i < Octaves; i++)
 		{
-			v += TransformOctave(xNoise.Noise(p)) * Spectrum[i];
+			v += xNoise.Noise(p) * Spectrum[i];
 			p *= Lacunarity;
 		}
 		
@@ -90,13 +92,13 @@ public class OaxoaSubtractiveFBM : FBM
 	
 	public override float Value(Vector3 position)
 	{
-		float v = Mathf.Abs(xFBM.Value(position));
+		float v = Mathf.Abs(xFBM.Value(position*Scale));
 		//v = 2f*(v-0.5f);
 		
 		float a;
 		for (int i = 0; i < Iterations; i++)
 		{
-			v = Mathf.Abs( v - xFBM.Value(position + 2f*(new Vector3(i+1, i+1, i+1))) );
+			v = Mathf.Abs( v - xFBM.Value(position*Scale + 2f*Scale*(new Vector3(i+1, i+1, i+1))) );
 			//v = 2f*(v-0.5f);
 		}
 		return v;
@@ -127,18 +129,46 @@ public class DomainWarpingFBM : FBM
 	
 	public override float Value(Vector3 position)
 	{
-		Vector3 p = position;
-		Vector3 offset = position;
+		Vector3 p = position*Scale;
+		Vector3 offset = position*Scale;
 		
 		for (int i = 0; i < Iterations; i++)
 		{
 			p = VectorValue(p, offset);
-			offset += 3f*position;
+			offset += 3f*position*Scale;
 		}
 		
-		return xFBM.Value(position + p);
+		return xFBM.Value(position*Scale + p);
 		
 		//return xFBM.Value( position + 4f*VectorValue(position, new Vector3(1.23f, 2.34f, 3.45f)) );
+	}
+}
+
+public class HybridFBM : FBM
+{
+	public HybridFBM(TPerlin3DNoise noise) : base(noise)
+	{
+		xSpectrumAutoNormalize = false;
+	}
+	
+	public override float Value(Vector3 position)
+	{
+		Vector3 p = position*Scale;
+		float v = (1f - Mathf.Abs(xNoise.Noise(p))) * Spectrum[0];
+		float weight = v;
+		
+		for (int octave = 1; octave < Octaves; octave++)
+		{
+			if (weight > 1f) weight = 1f;
+			
+			float a = (1f - Mathf.Abs(xNoise.Noise(p))) * Spectrum[octave];
+			v += weight*a;
+			weight *= a;
+			
+			p *= Lacunarity;
+		}
+		
+		return v;
 	}
 }
 

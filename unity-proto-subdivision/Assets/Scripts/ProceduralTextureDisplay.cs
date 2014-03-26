@@ -14,8 +14,10 @@ public class ProceduralTextureDisplay : MonoBehaviour {
 	void Start () {
 		//fbm = new FBM(new TPerlin3DNoise());
 		//fbm = new OaxoaSubtractiveFBM(new TPerlin3DNoise(), 10);
-		fbm = new DomainWarpingFBM(new TPerlin3DNoise(), 2);
-		fbm.SetSpectrum(7, 0.75f);
+		fbm = new DomainWarpingFBM(new TUnityPerlinNoise(), 2);
+		//fbm = new HybridFBM(new TUnityPerlinNoise());
+		fbm.SetSpectrum(12, 0.5f);
+		fbm.Scale = 0.1f;
 		Thread generateThread = new Thread(GenerateTexutre);
 		generateThread.Start(this);
 	}
@@ -40,11 +42,11 @@ public class ProceduralTextureDisplay : MonoBehaviour {
 		float fmin = 1000f;
 		float fmax = -1000f;
 		
-		FBMBatchTask calcFieldTask = new FBMBatchTask((thisTex as ProceduralTextureDisplay).fbm, 4);
+		FBMBatchTask calcFieldTask = new FBMBatchTask((thisTex as ProceduralTextureDisplay).fbm, 6);
 		Vector3[] points = new Vector3[w*h];
 		for (int x = 0; x < w; x++)
 			for (int y = 0; y < h; y++)
-				points[y*h + x] = new Vector3( (float)x/(float)w, (float)y/(float)h, 0f );
+				points[y*h + x] = new Vector3( 0.5f*(float)x/(float)w, 0.3f*(float)y/(float)h, 0f );
 		
 		calcFieldTask.Start(points);
 		
@@ -71,7 +73,7 @@ public class ProceduralTextureDisplay : MonoBehaviour {
 			for (int y = 0; y < h; y++)
 			{
 				float f = (field[y*h + x]-fmin)/(fmax-fmin);
-				(thisTex as ProceduralTextureDisplay).TexPixels[y*h + x] = new Color(f, f, f);		
+				(thisTex as ProceduralTextureDisplay).TexPixels[y*h + x] = new Color(f, f*0.8f, f*0.5f);		
 			}
 		(thisTex as ProceduralTextureDisplay).ThreadFinished = true;
 		

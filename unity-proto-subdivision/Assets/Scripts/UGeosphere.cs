@@ -80,10 +80,14 @@ public class TGeosphere {
 	public TGeosphere(int seed = 0)
 	{
 		xSeed = seed;
-		xPerlinNoise = new TPerlin3DNoise(xSeed);
+		xPerlinNoise = new TPerlin3DNoise(xSeed); //TUnityPerlinNoise TPerlin3DNoise
 		
-		xFBM = new OaxoaSubtractiveFBM(xPerlinNoise, 10);
-		xFBM.SetSpectrum(10, 1f);
+		//xFBM = new OaxoaSubtractiveFBM(xPerlinNoise, 10);
+		//xFBM = new FBM(xPerlinNoise);
+		//xFBM = new HybridFBM(xPerlinNoise);
+		xFBM = new DomainWarpingFBM(xPerlinNoise, 2);
+		xFBM.SetSpectrum(10, 0.7f);
+		xFBM.Scale = 0.003f;
 	}
 	
 	public void Clear()
@@ -259,16 +263,32 @@ public class TGeosphere {
 		}
 	}
 	
-	public void ApplyPerlinNoise()//(int method, float scale, int startOctave, int finishOctave, float[] spectrum)
+	public void ApplyPerlinNoise()
 	{
+		List<Vector3> points = new List<Vector3>();
+		foreach (TGeoNode node in xNodes)
+			if (!node.transformed)
+			{
+				points.Add(node.position);	
+			}
+		FBMBatchTask fbmbatch = new FBMBatchTask(xFBM, 6);
+		fbmbatch.Start(points.ToArray());
+		
+		while ( !fbmbatch.Done() ); // wait for FBM batch
+		points = null;
+		float[] fbmout = fbmbatch.Output();
+		
+		int counter = 0;
 		foreach (TGeoNode node in xNodes)
 		{
 			if (!node.transformed)
 			{
-				float n = xFBM.Value(0.2f*node.position.normalized); //xPerlinNoise.Noise( node.position.normalized * 10f );
-				node.position = node.position.normalized * (1f + 0.5f*n);
+				//float n = xFBM.Value(0.2f*node.position.normalized); //xPerlinNoise.Noise( node.position.normalized * 10f );
+				float n = fbmout[counter];
+				node.position = node.position.normalized * (1f + 0.8f*n);
 				node.radius = node.position.magnitude;
 				node.transformed = true;
+				counter++;
 			}
 		}
 	}
@@ -431,10 +451,12 @@ public class TGeosphere {
 public class UGeosphere : MonoBehaviour {
 	
 	public GameObject GeosphereRegionPrefab;
+	public int SubdivisionLevel;
 	
 	private TGeosphere geo;
 	private int currentSubdivisionLevel = 0;
 	private List<GameObject> regions = new List<GameObject>();
+	private int regionCounter = -1;
 	
 	void Start () {
 		geo = new TGeosphere();
@@ -458,15 +480,21 @@ public class UGeosphere : MonoBehaviour {
 	void Update () {
 		transform.RotateAround(new Vector3(0f, 1f, 0f), Time.deltaTime*0.1f);
 		
-		if (currentSubdivisionLevel != geo.SubdivisionLevel)
+		if (currentSubdivisionLevel != geo.SubdivisionLevel && regionCounter < 0)
+			regionCounter = 0;
+				
+			//for (int region = 0; region < regions.Count; region++)
+		if (regionCounter >= 0)
 		{
-			for (int region = 0; region < regions.Count; region++)
+			regions[regionCounter].GetComponent<MeshFilter>().mesh = geo.RegionsMeshes[regionCounter].MakeMesh();//GenerateMesh(region);
+			regionCounter++;
+			if (regionCounter == regions.Count)
 			{
-				regions[region].GetComponent<MeshFilter>().mesh = geo.RegionsMeshes[region].MakeMesh();//GenerateMesh(region);
+				currentSubdivisionLevel = geo.SubdivisionLevel;
+				regionCounter = -1;
 			}
-			currentSubdivisionLevel = geo.SubdivisionLevel;
 		}
 		
-		geo.SubdivideThreaded(7);
+		geo.SubdivideThreaded(SubdivisionLevel);
 	}
 }

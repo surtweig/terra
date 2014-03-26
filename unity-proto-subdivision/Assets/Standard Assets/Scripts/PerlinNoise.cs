@@ -49,7 +49,7 @@ public class TPerlin3DNoise
 		Random.seed = seedBackup;
 	}
 	
-	public float Noise(Vector2 v)
+	public virtual float Noise(Vector2 v)
 	{
 		int ix = Mathf.FloorToInt(v.x);
 		float fx0 = v.x - ix;
@@ -70,7 +70,7 @@ public class TPerlin3DNoise
 		return Mathf.Lerp(vy0, vy1, wy);
 	}
 	
-	public float Noise(Vector3 v)
+	public virtual float Noise(Vector3 v)
 	{
 		int ix = Mathf.FloorToInt(v.x);
 		float fx0 = v.x - ix;
@@ -123,4 +123,33 @@ public class TPerlin3DNoise
 	{
 		return x*x*(3f-2f*x);
 	}
+}
+
+
+// Extension
+
+public class TUnityPerlinNoise : TPerlin3DNoise
+{
+	private Vector2 xSeedVector;
+	
+	public TUnityPerlinNoise(int randomSeed = 0)
+	{
+		int seedBackup = Random.seed;
+		Random.seed = randomSeed;
+		
+		xSeedVector = new Vector2(256f*(Random.value-0.5f), 256f*(Random.value-0.5f));
+
+		Random.seed = seedBackup;
+	}
+	
+	public override float Noise(Vector2 v)
+	{
+		return 2f*Mathf.PerlinNoise(v.x + xSeedVector.x, v.y + xSeedVector.y) - 1f;
+	}
+
+	public override float Noise(Vector3 v)
+	{
+		return Noise(new Vector2(v.x + v.z, v.y + v.z));
+	}
+
 }
