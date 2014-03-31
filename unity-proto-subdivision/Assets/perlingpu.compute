@@ -1,7 +1,13 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel kPerlin
 #pragma kernel kFBM
-#define threadGroupSize 128
+#pragma kernel kOaxoaSubtractiveFBM
+#pragma kernel kDomainWarpingFBM
+#pragma kernel kMaxMin
+#pragma kernel kBailout
+#pragma kernel kHybrid
+
+#define threadGroupSize 64
 
 struct PointInput
 {
@@ -16,36 +22,16 @@ struct PerlinOutput
 RWStructuredBuffer<PointInput> points;
 RWStructuredBuffer<PerlinOutput> values;
 	
-/*static int permutation[512] = {
-	151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180,
-	151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180  
-};*/
+static uint permutation4[128] = {
+1535746199, 226692954, 895508425, 3775392194, 510076044, 1661505093, 169209893, 2483469847,
+1273657591, 1053104640, 3420191838, 537600885, 1478603065, 1463326189, 2289898670, 2940512427,
+2252842314, 2786799755, 3885929037, 2061856595, 3867530044, 693922268, 687156791, 915367668,
+2705267009, 1230034945, 3146009809, 2836552144, 2189935816, 1453309044, 3329057956, 1073986221,
+4209170740, 3389356924, 2121700134, 3562361599, 3812347599, 289017903, 706526646, 3584735199,
+43579511, 1185126956, 2607127005, 162278311, 4247197313, 1852596755, 3907023183, 1752218034,
+3831625434, 3253871355, 210817774, 4053971903, 3952161617, 1810829049, 534167601, 2641020853,
+2966181048, 758282611, 4271244415, 1573776522, 490959582, 2381531160, 1112458112, 3030138327,
 
-static uint permutation4[64] = {
 1535746199, 226692954, 895508425, 3775392194, 510076044, 1661505093, 169209893, 2483469847,
 1273657591, 1053104640, 3420191838, 537600885, 1478603065, 1463326189, 2289898670, 2940512427,
 2252842314, 2786799755, 3885929037, 2061856595, 3867530044, 693922268, 687156791, 915367668,
@@ -55,6 +41,8 @@ static uint permutation4[64] = {
 3831625434, 3253871355, 210817774, 4053971903, 3952161617, 1810829049, 534167601, 2641020853,
 2966181048, 758282611, 4271244415, 1573776522, 490959582, 2381531160, 1112458112, 3030138327
 };
+
+static float3 rndvector = float3(28.9017903, 53.7600885, 49.0959582);
 	
 float fade (float t)
 {
@@ -78,20 +66,20 @@ uint p4i (uint index)
 	
 float perlin (float3 p)
 {
+	uint3 i = uint3( int(floor(p.x)) & 255, int(floor(p.y)) & 255, int(floor(p.z)) & 255 );
 
-	uint3 i = uint3( ((uint)p.x) & 255, ((uint)p.y) & 255, ((uint)p.z) & 255 );
 	float3 f = p-floor(p);
 	
 	float u = fade(f.x);
 	float v = fade(f.y);
 	float w = fade(f.z);
 	
-	uint A  = (p4i(i.x) + i.y) & 255;//(permutation[i.x]+i.y) & 255;
-	uint AA = (p4i(A) + i.z) & 255;//(permutation[A]+i.z) & 255;
-	uint AB = (p4i(A+1) + i.z) & 255;//(permutation[A+1]+i.z) & 255;
-	uint B  = (p4i(i.x+1) + i.y) & 255;//(permutation[i.x+1]+i.y) & 255;
-	uint BA = (p4i(B) + i.z) & 255;//(permutation[B]+i.z) & 255;
-	uint BB = (p4i(B+1) + i.z) & 255;//(permutation[B+1]+i.z) & 255;
+	uint A  = (p4i(i.x) + i.y);
+	uint AA = (p4i(A) + i.z);
+	uint AB = (p4i(A+1) + i.z);
+	uint B  = (p4i( i.x+1 ) + i.y);
+	uint BA = (p4i(B) + i.z);
+	uint BB = (p4i( B+1 ) + i.z);
 	
 	return lerp(lerp(lerp(grad(p4i(AA), f.x  , f.y  , f.z   ),  
                           grad(p4i(BA), f.x-1.0, f.y  , f.z   ),
@@ -124,6 +112,83 @@ float fbm (float3 p, int octaves, float persistence)
 	return v;
 }
 
+float oaxoa (float3 p, int octaves, float persistence, int iterations)
+{
+	float v = abs(fbm(p, octaves, persistence));
+	
+	for (int i = 0; i < iterations; i++)
+		v = abs(v - fbm(p + 10.0*float3(i+1, i+1, i+1), octaves, persistence));
+	return v;
+}
+
+float domainWarping (float3 p, int octaves, float persistence, int iterations)
+{
+	float3 v = p;
+	float3 offset = float3(0.315, 1.781, 3.917);
+	
+	for (int i = 0; i < iterations; i++)
+	{
+		v = float3( fbm(4.0*v + offset*(i+1), octaves, persistence), fbm(4.0*v + 2.0*offset*(i+1), octaves, persistence), fbm(4.0*v + 3.0*offset*(i+1), octaves, persistence) );
+	}
+	return fbm(p + v, octaves, persistence);
+}
+
+float maxmin (float3 p, int octaves, float persistence, int iterations)
+{
+	float v = 0.0;
+	float3 t = p;
+	for (int i = 0; i < iterations; i++)
+	{
+		float f = fbm(t, octaves, persistence);
+		if (v < 0.0)
+		{
+			if (f < v)
+				v = f;
+		}
+		else
+		{
+			if (f > v)
+				v = f;
+		}
+		t += float3(0.315, 1.781, 3.917);
+	}
+	return v;
+}
+
+float3 fbmvector (float3 p, int octaves, float persistence)
+{
+	return float3(fbm(p, octaves, persistence), fbm(p+rndvector, octaves, persistence), fbm(p+2.0*rndvector, octaves, persistence));
+}
+
+float bailout (float3 p, int octaves, float persistence, int iterations)
+{
+	float3 t = p;
+	for (int i = 0; i < iterations; i++)
+	{
+		t += fbmvector(t, octaves, persistence);
+	}
+	return length(t-p);
+}
+
+float hybrid (float3 p, int octaves, float persistence)
+{
+	float3 t = p;
+	float v = 0.7+perlin(p);//(1.0 - abs(perlin(p)));
+	float w = v;
+	
+	for (int octave = 1; octave < octaves; octave++)
+	{
+		if (w > 1.0) w = 1.0;
+		
+		float a = (0.7+perlin(t)) * pow(2.0, -octave*persistence);
+		v += w*a;
+		w *= a;
+		t *= 2.0;
+	}
+	
+	return v;
+}
+
 [numthreads(threadGroupSize,1,1)]
 void kPerlin (uint3 id : SV_DispatchThreadID)
 {
@@ -133,5 +198,35 @@ void kPerlin (uint3 id : SV_DispatchThreadID)
 [numthreads(threadGroupSize,1,1)]
 void kFBM (uint3 id : SV_DispatchThreadID)
 {
-	values[id.x].val = fbm(points[id.x].pos, 12, 0.5);
+	values[id.x].val = fbm(points[id.x].pos, 10, 0.75);
+}
+
+[numthreads(threadGroupSize,1,1)]
+void kOaxoaSubtractiveFBM (uint3 id : SV_DispatchThreadID)
+{
+	values[id.x].val = oaxoa(points[id.x].pos, 10, 0.75, 10);
+}
+
+[numthreads(threadGroupSize,1,1)]
+void kDomainWarpingFBM (uint3 id : SV_DispatchThreadID)
+{
+	values[id.x].val = domainWarping(points[id.x].pos, 10, 1.0, 3);
+}
+
+[numthreads(threadGroupSize,1,1)]
+void kMaxMin (uint3 id : SV_DispatchThreadID)
+{
+	values[id.x].val = maxmin(points[id.x].pos, 10, 1.0, 20);
+}
+
+[numthreads(threadGroupSize,1,1)]
+void kBailout (uint3 id : SV_DispatchThreadID)
+{
+	values[id.x].val = bailout(points[id.x].pos, 10, 1.0, 10);
+}
+
+[numthreads(threadGroupSize,1,1)]
+void kHybrid (uint3 id : SV_DispatchThreadID)
+{
+	values[id.x].val = hybrid(points[id.x].pos, 20, -0.05);
 }

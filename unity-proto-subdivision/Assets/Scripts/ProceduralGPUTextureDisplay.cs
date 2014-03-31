@@ -1,21 +1,42 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System;
 
 public class ProceduralGPUTextureDisplay : MonoBehaviour {
 
 	public ComputeShader PerlinGPU;
 	public int Width;
 	public int Height;
+	public float Scale;
+	
+	public enum MethodEnum
+	{
+		kPerlin,
+		kFBM,
+		kOaxoaSubtractiveFBM,
+		kDomainWarpingFBM,
+		kMaxMin,
+		kBailout,
+		kHybrid
+	};
+	
+	public MethodEnum Method;
+	//public string Method;
 	
 	private ComputeBuffer inputPoints;
 	private ComputeBuffer outputValues;
 	private int csKernel;
-	private const int csThreadGroupSize = 128;
+	private const int csThreadGroupSize = 64;
 	
 	void Start () {
-		csKernel = PerlinGPU.FindKernel("kFBM");
+		csKernel = (int)(Method);//PerlinGPU.FindKernel("k"+Method);
 		CreateBuffers();
+		
+		float t1 = Time.realtimeSinceStartup;
 		DispatchCS();
+		float t2 = Time.realtimeSinceStartup;
+		
+		Debug.Log( (t2-t1)*1000f );
 
 		float[] values = new float[Width*Height];
 		outputValues.GetData(values);
@@ -56,7 +77,7 @@ public class ProceduralGPUTextureDisplay : MonoBehaviour {
 		Vector3[] points = new Vector3[Width*Height];
 		for (int ix = 0; ix < Width; ix++)
 			for (int iy = 0; iy < Height; iy++)
-				points[ix + iy*Height] = new Vector3(ix*0.004f, iy*0.004f, 0f);
+				points[ix + iy*Height] = new Vector3((ix/(float)(Width) +2.5f)*Scale, (iy/(float)(Height)-0.5f)*Scale, 0f);
 		
 		inputPoints.SetData(points);
 		
