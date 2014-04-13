@@ -1,0 +1,66 @@
+﻿#include "fbmgpu_base.cginc"
+
+#pragma kernel k_FBM
+#pragma kernel k_Hybrid
+#pragma kernel k_Turbulence
+#pragma kernel k_FBMAbs
+#pragma kernel k_HybridAbs
+
+KERNEL(FBM)
+
+float Hybrid (float3 p, int octaves, SPECTRUM spectrum)
+{
+	float3 t = p;
+	float v = (0.7+perlin(p));//(1.0 - abs(perlin(p)));
+	float w = v;
+	
+	for (int octave = 1; octave < octaves; octave++)
+	{
+		if (w > 1.0) w = 1.0;
+		
+		float a = 0.7+perlin(t) * spectrum[octave];
+		v += w*a;
+		w *= a;
+		t *= 2.0;
+	}
+	
+	return v;
+} KERNEL(Hybrid)
+
+float HybridAbs (float3 p, int octaves, SPECTRUM spectrum)
+{
+	float3 t = p;
+	float v = abs(0.2+perlin(p));
+	float w = v;
+	
+	for (int octave = 1; octave < octaves; octave++)
+	{
+		if (w > 1.0) w = 1.0;
+		
+		float a = abs(0.2+perlin(t)) * spectrum[octave];
+		v += w*a;
+		w *= a;
+		t *= 2.0;
+	}
+	
+	return v;
+} KERNEL(HybridAbs)
+
+float Turbulence (float3 p, int octaves, SPECTRUM spectrum)
+{
+	float v = 0.0;
+	float3 t = p;
+	
+	for (int octave = 0; octave < octaves; octave++)
+	{
+		v += abs(perlin(t))*spectrum[octave];
+		t *= 2.0;
+	}
+	
+	return v;
+} KERNEL(Turbulence)
+
+float FBMAbs (float3 p, int octaves, SPECTRUM spectrum)
+{
+	return abs(FBM(p, octaves, spectrum));
+} KERNEL(FBMAbs)
