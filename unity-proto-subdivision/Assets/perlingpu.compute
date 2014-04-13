@@ -6,6 +6,7 @@
 #pragma kernel kMaxMin
 #pragma kernel kBailout
 #pragma kernel kHybrid
+#pragma kernel kDeriative
 
 #define threadGroupSize 64
 
@@ -98,6 +99,26 @@ float perlin (float3 p)
 				w);	
 }
 
+float rand (float3 pos)
+{
+      return 0.5+(frac(sin(dot(pos, float3(12.9898, 78.233, -47.2937))) * 43758.5453))*0.5;
+}
+
+// Input: It uses texture coords as the random number seed.
+// Output: Random number: [0,1), that is between 0.0 and 0.999999... inclusive.
+// Author: Michael Pohoreski
+// Copyright: Copyleft 2012 :-)
+float rand2 (float3 pos)
+{
+  // We need irrationals for pseudo randomness.
+  // Most (all?) known transcendental numbers will (generally) work.
+  const float3 r = float3(
+    23.1406926327792690, // e^pi (Gelfond's constant)
+    2.6651441426902251,  // 2^sqrt(2) (Gelfond–Schneider constant)
+	3.1415926535897932); 
+  return frac( cos( fmod( 123456789.0, 1e-7 + 256.0 * dot(pos, r) ) ) );  
+}
+
 float fbm (float3 p, int octaves, float persistence)
 {
 	float v = 0.0;
@@ -155,6 +176,83 @@ float maxmin (float3 p, int octaves, float persistence, int iterations)
 	return v;
 }
 
+float hybrid (float3 p, int octaves, float persistence)
+{
+	float3 t = p;
+	float v = 0.7+perlin(p);//(1.0 - abs(perlin(p)));
+	float w = v;
+	
+	for (int octave = 1; octave < octaves; octave++)
+	{
+		if (w > 1.0) w = 1.0;
+		
+		float a = (1.0+perlin(t)) * pow(2.0, -octave*persistence);
+		v += w*a;
+		w *= a;
+		t *= 2.0;
+	}
+	
+	return v;
+}
+
+float4 dnoise3f (float3 pos)
+{
+	float3 i = floor(pos);
+	float3 fr = pos-i;	
+	
+	float3 dr;
+	dr.x = 30.0 * fr.x * fr.x * (fr.x * (fr.x-2.0) + 1.0);
+	dr.y = 30.0 * fr.y * fr.y * (fr.y * (fr.y-2.0) + 1.0);
+	dr.z = 30.0 * fr.z * fr.z * (fr.z * (fr.z-2.0) + 1.0);
+
+	fr.x = fr.x * fr.x * fr.x * (fr.x * (fr.x * 6.0f - 15.0f) + 10.0f);	
+	fr.y = fr.y * fr.y * fr.y * (fr.y * (fr.y * 6.0f - 15.0f) + 10.0f);	
+	fr.z = fr.z * fr.z * fr.z * (fr.z * (fr.z * 6.0f - 15.0f) + 10.0f);
+	
+	float a = rand(i);
+	float b = rand(i + float3(1.0, 0.0, 0.0) );
+	float c = rand(i + float3(0.0, 1.0, 0.0) );
+	float d = rand(i + float3(1.0, 1.0, 0.0) );
+	float e = rand(i + float3(0.0, 0.0, 1.0) );
+	float f = rand(i + float3(1.0, 0.0, 1.0) );
+	float g = rand(i + float3(0.0, 1.0, 1.0) );
+	float h = rand(i + float3(1.0, 1.0, 1.0) );
+	
+	float k0 =  a;
+	float k1 =  b-a;
+	float k2 =  c-a;
+	float k3 =  e-a;
+	float k4 =  a-b-c+d;
+	float k5 =  a-c-e+g;
+	float k6 =  a-b-e+f;
+	float k7 = -a+b+c-d+e-f-g+h;
+	
+	return float4( dr.x * (k1 + k4*fr.y + k6*fr.z + k7*fr.y*fr.z),
+				   dr.y * (k2 + k5*fr.z + k4*fr.x + k7*fr.z*fr.x),
+				   dr.z * (k3 + k6*fr.x + k5*fr.y + k7*fr.x*fr.y),
+                   k0 + k1*fr.x + k2*fr.y + k3*fr.z + k4*fr.x*fr.y + k5*fr.y*fr.z + k6*fr.z*fr.x + k7*fr.x*fr.y*fr.z );
+}
+
+float deriative_fbm (float3 p, int octaves, float persistence)
+{
+	float v = 0.0;
+	float w = 1.0;
+	float3 t = p;
+	float3 d = float3(0.0, 0.0, 0.0);
+	
+	for (int octave = 0; octave < octaves; octave++)
+	{
+		float4 n = dnoise3f(t);
+		d += n;
+		w = pow(2.0, -octave*persistence);
+		v += w * n.w / (1.0 + d.x*d.x + d.y*d.y + d.z*d.z);
+		//w *= 0.8;
+		t *= 2.0;
+	}
+	
+	return v;
+}
+
 float3 fbmvector (float3 p, int octaves, float persistence)
 {
 	return float3(fbm(p, octaves, persistence), fbm(p+rndvector, octaves, persistence), fbm(p+2.0*rndvector, octaves, persistence));
@@ -168,25 +266,6 @@ float bailout (float3 p, int octaves, float persistence, int iterations)
 		t += fbmvector(t, octaves, persistence);
 	}
 	return length(t-p);
-}
-
-float hybrid (float3 p, int octaves, float persistence)
-{
-	float3 t = p;
-	float v = 0.7+perlin(p);//(1.0 - abs(perlin(p)));
-	float w = v;
-	
-	for (int octave = 1; octave < octaves; octave++)
-	{
-		if (w > 1.0) w = 1.0;
-		
-		float a = (0.7+perlin(t)) * pow(2.0, -octave*persistence);
-		v += w*a;
-		w *= a;
-		t *= 2.0;
-	}
-	
-	return v;
 }
 
 [numthreads(threadGroupSize,1,1)]
@@ -210,7 +289,7 @@ void kOaxoaSubtractiveFBM (uint3 id : SV_DispatchThreadID)
 [numthreads(threadGroupSize,1,1)]
 void kDomainWarpingFBM (uint3 id : SV_DispatchThreadID)
 {
-	values[id.x].val = domainWarping(points[id.x].pos, 10, 1.0, 3);
+	values[id.x].val = domainWarping(points[id.x].pos, 10, 0.8, 2);
 }
 
 [numthreads(threadGroupSize,1,1)]
@@ -222,11 +301,17 @@ void kMaxMin (uint3 id : SV_DispatchThreadID)
 [numthreads(threadGroupSize,1,1)]
 void kBailout (uint3 id : SV_DispatchThreadID)
 {
-	values[id.x].val = bailout(points[id.x].pos, 10, 1.0, 10);
+	values[id.x].val = bailout(points[id.x].pos, 10, 1.0, 5);
 }
 
 [numthreads(threadGroupSize,1,1)]
 void kHybrid (uint3 id : SV_DispatchThreadID)
 {
-	values[id.x].val = hybrid(points[id.x].pos, 20, -0.05);
+	values[id.x].val = hybrid(points[id.x].pos, 10, 0.1);
+}
+
+[numthreads(threadGroupSize,1,1)]
+void kDeriative (uint3 id : SV_DispatchThreadID)
+{
+	values[id.x].val = deriative_fbm(points[id.x].pos, 10, 0.75);
 }

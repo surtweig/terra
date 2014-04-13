@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Threading;
 using System;
 
 public class ProceduralGPUTextureDisplay : MonoBehaviour {
@@ -17,7 +18,8 @@ public class ProceduralGPUTextureDisplay : MonoBehaviour {
 		kDomainWarpingFBM,
 		kMaxMin,
 		kBailout,
-		kHybrid
+		kHybrid,
+		kDeriative
 	};
 	
 	public MethodEnum Method;
@@ -27,8 +29,10 @@ public class ProceduralGPUTextureDisplay : MonoBehaviour {
 	private ComputeBuffer outputValues;
 	private int csKernel;
 	private const int csThreadGroupSize = 64;
+	private bool csStarted = false;
 	
-	void Start () {
+	private void StartCS ()
+	{
 		csKernel = (int)(Method);//PerlinGPU.FindKernel("k"+Method);
 		CreateBuffers();
 		
@@ -36,7 +40,7 @@ public class ProceduralGPUTextureDisplay : MonoBehaviour {
 		DispatchCS();
 		float t2 = Time.realtimeSinceStartup;
 		
-		Debug.Log( (t2-t1)*1000f );
+		Debug.Log( "csTime = " + (t2-t1)*1000f + " ms" );
 
 		float[] values = new float[Width*Height];
 		outputValues.GetData(values);
@@ -56,13 +60,24 @@ public class ProceduralGPUTextureDisplay : MonoBehaviour {
 			float c = (values[i]-fmin)/(fmax-fmin);
 			TexPixels[i] = new Color(c, c, c);
 		}
-		Debug.Log(fmin);
-		Debug.Log(fmax);
+		Debug.Log("fmin = " + fmin);
+		Debug.Log("fmax = " + fmax);
 		
 		Texture2D tex = new Texture2D(Width, Height, TextureFormat.RGB24, false);
 		renderer.material.mainTexture = tex;
 		tex.SetPixels(TexPixels);
 		tex.Apply();
+	}
+	
+	void Update()
+	{
+		transform.Rotate( new Vector3(0f, 0f, 1f), 10f*Time.deltaTime );
+		if (Time.time > 5f && !csStarted)
+		{
+			Debug.Log("CS started");
+			csStarted = true;
+			StartCS();
+		}
 	}
 	
 	private void OnDisable()
@@ -90,7 +105,7 @@ public class ProceduralGPUTextureDisplay : MonoBehaviour {
 		PerlinGPU.SetBuffer(csKernel, "values", outputValues);
 		PerlinGPU.Dispatch(csKernel, Width*Height/csThreadGroupSize, 1, 1);
 	}
-
+	
 	private void ReleaseBuffers()
 	{
 		inputPoints.Release();
