@@ -11,6 +11,8 @@ public class FBMGPUDisplayTest : MonoBehaviour {
 	public string MethodName;
 	public int Octaves;
 	public float Persistence;
+	public float Gamma;
+	public int Iterations;
 	
 	private FBMGPU fbmgpu;
 	private Color[] texPixels;
@@ -23,10 +25,12 @@ public class FBMGPUDisplayTest : MonoBehaviour {
 		Vector3[] points = new Vector3[Width*Height];
 		for (int x = 0; x < Width; x++)
 			for (int y = 0; y < Height; y++)
-				points[x + y*Height] = new Vector3((x/(float)(Width))*Scale, (y/(float)(Height))*Scale, 0f);
+				points[x + y*Height] = new Vector3((x/(float)(Width)-0.5f+10f)*Scale, (y/(float)(Height)-0.5f)*Scale, 0f);
 		
-		fbmgpu.Start(points, 64);
+		fbmgpu.Start(points, 32);
 		fbmgpu.Setup(Octaves, Persistence);
+		fbmgpu.Gamma = Gamma;
+		fbmgpu.Iterations = Iterations;
 	}
 	
 	void Update () {
@@ -74,8 +78,9 @@ public class FBMGPUDisplayTest : MonoBehaviour {
 	
 	void OnTextureGenerated()
 	{
-		Texture2D tex = new Texture2D(Width, Height, TextureFormat.RGB24, false);
+		Texture2D tex = new Texture2D(Width, Height, TextureFormat.RGB24, true, true);
 		renderer.material.mainTexture = tex;
+		tex.wrapMode = TextureWrapMode.Clamp;
 		tex.SetPixels(texPixels);
 		tex.Apply();
 		texDone = true;

@@ -3,7 +3,14 @@ using System.Collections.Generic;
 using System.Threading;
 using System;
 
-public class FBMGPU
+public interface ISpatialNoiseGenerator
+{
+	void Start(Vector3[] points, int steps);
+	bool Update();
+	float[] Output();
+}
+
+public class FBMGPU : ISpatialNoiseGenerator
 {
 	public FBMGPU (ComputeShader program, string methodName)
 	{
@@ -23,6 +30,9 @@ public class FBMGPU
 			spectrum[octave] = Mathf.Pow(2f, -(float)(octave)*persistence);
 		Setup(spectrum);
 	}
+	
+	public float Gamma = 1f;
+	public int Iterations = 1;
 
 	public void Start(Vector3[] points, int steps = 1)
 	{
@@ -60,7 +70,7 @@ public class FBMGPU
 	
 	protected virtual void PrepareBuffers()
 	{
-		Vector3[] stepPoints = new Vector3[ (inputPoints.Length - stepIndex) / stepsCount ];
+		Vector3[] stepPoints = new Vector3[ (inputPoints.Length) / stepsCount ];
 		for (int i = 0; i < stepPoints.Length; i++)
 			stepPoints[i] = inputPoints[stepIndex + i*stepsCount];
 		currentStepSize = stepPoints.Length;
@@ -86,9 +96,8 @@ public class FBMGPU
 		gpuProgram.SetBuffer(method, "values", outputValuesBuffer);
 		gpuProgram.SetBuffer(method, "baseSpectrum", baseSpectrumBuffer);
 		gpuProgram.SetInt("baseOctaves", baseSpectrum.Length);
-		//Debug.Log("baseOctaves = " + baseSpectrum.Length);
-		//for (int i = 0; i < baseSpectrum.Length; i++)
-		//	Debug.Log("   spec["+ i + "] = " + baseSpectrum[i]);
+		gpuProgram.SetFloat("gamma", Gamma);
+		gpuProgram.SetInt("iterations", Iterations);
 
 		gpuProgram.Dispatch(method, currentStepSize/THREADGROUPSIZE, 1, 1);
 		
@@ -110,8 +119,6 @@ public class FBMGPU
 	protected float[] outputValues;
 	protected float[] baseSpectrum;
 	
-	protected static int SPECTRUM_MAX_LENGTH = 16; // must be the same as SPECTRUM_MAX_LENGTH in fbmgpu_base.cginc
-
 	protected ComputeBuffer inputPointsBuffer;
 	protected ComputeBuffer outputValuesBuffer;
 	protected ComputeBuffer baseSpectrumBuffer;

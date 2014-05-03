@@ -1,12 +1,6 @@
 ﻿<Properties>
-  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\UGeosphere.cs">
-    <Files>
-      <File FileName="Assets\UGeosphere.cs" Line="46" Column="15" />
-      <File FileName="Assets\LibNoiseDemo.cs" Line="65" Column="35" />
-      <File FileName="Assets\Resources\LibNoise.Unity\Noise2D.cs" Line="392" Column="49" />
-    </Files>
-  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.Workspace />
+  <MonoDevelop.Ide.Workbench />
   <MonoDevelop.Ide.DebuggingService.Breakpoints>
     <BreakpointStore />
   </MonoDevelop.Ide.DebuggingService.Breakpoints>

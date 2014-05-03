@@ -1,10 +1,15 @@
-﻿#include "fbmgpu_base.cginc"
+﻿//
+// !!! Moved to fbmgpulib.compute
+//
+
+#include "fbmgpubase.cginc"
 
 #pragma kernel k_FBM
 #pragma kernel k_Hybrid
 #pragma kernel k_Turbulence
 #pragma kernel k_FBMAbs
 #pragma kernel k_HybridAbs
+#pragma kernel k_FBMAbsGamma
 
 KERNEL(FBM)
 
@@ -30,14 +35,14 @@ float Hybrid (float3 p, int octaves, SPECTRUM spectrum)
 float HybridAbs (float3 p, int octaves, SPECTRUM spectrum)
 {
 	float3 t = p;
-	float v = abs(0.2+perlin(p));
+	float v = 0.2+abs(perlin(p));
 	float w = v;
 	
 	for (int octave = 1; octave < octaves; octave++)
 	{
 		if (w > 1.0) w = 1.0;
 		
-		float a = abs(0.2+perlin(t)) * spectrum[octave];
+		float a = (0.2+abs(perlin(t))) * spectrum[octave];
 		v += w*a;
 		w *= a;
 		t *= 2.0;
@@ -64,3 +69,8 @@ float FBMAbs (float3 p, int octaves, SPECTRUM spectrum)
 {
 	return abs(FBM(p, octaves, spectrum));
 } KERNEL(FBMAbs)
+
+float FBMAbsGamma (float3 p, int octaves, SPECTRUM spectrum, float gamma)
+{
+	return pow(abs(FBM(p, octaves, spectrum)), gamma);
+} KERNEL_P1(FBMAbsGamma, gamma)
