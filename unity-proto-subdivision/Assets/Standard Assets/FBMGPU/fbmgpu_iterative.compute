@@ -1,0 +1,69 @@
+﻿//
+// !!! Moved to fbmgpulib.compute
+//
+
+#include "fbmgpubase.cginc"
+
+#pragma kernel k_DomainWarping
+#pragma kernel k_DomainWarping2D
+#pragma kernel k_MaxMin
+#pragma kernel k_OaxoaSubtractive
+
+int iterations;
+
+float OaxoaSubtractive (float3 p, int octaves, SPECTRUM spectrum, int iterations)
+{
+	float v = 0.7+FBM(p, octaves, spectrum);
+	
+	for (int i = 0; i < iterations; i++)
+		v = abs(v-(0.7+FBM(p + 10.0*float3(i+1, i+1, i+1), octaves, spectrum)));
+	return v;
+} KERNEL_P1(OaxoaSubtractive, iterations)
+
+
+float DomainWarping (float3 p, int octaves, SPECTRUM spectrum, int iterations)
+{
+	float3 v = p;
+	float3 offset = float3(0.315, 1.781, 3.917);
+	
+	for (int i = 0; i < iterations; i++)
+	{
+		v = float3( FBM(4.0*v + offset*(i+1), octaves, spectrum), FBM(4.0*v + 2.0*offset*(i+1), octaves, spectrum), FBM(4.0*v + 3.0*offset*(i+1), octaves, spectrum) );
+	}
+	return FBM(p + v, octaves, spectrum);
+} KERNEL_P1(DomainWarping, iterations)
+
+
+float DomainWarping2D (float3 p, int octaves, SPECTRUM spectrum, int iterations)
+{
+	float3 v = p;
+	float3 offset = float3(0.315, 1.781, 3.917);
+	
+	for (int i = 0; i < iterations; i++)
+	{
+		v = float3( FBM(4.0*v + offset*(i+1), octaves, spectrum), FBM(4.0*v + 2.0*offset*(i+1), octaves, spectrum), v.z );
+	}
+	return FBM(p + v, octaves, spectrum);
+} KERNEL_P1(DomainWarping2D, iterations)
+
+float MaxMin (float3 p, int octaves, SPECTRUM spectrum, int iterations)
+{
+	float v = 0.0;
+	float3 t = p;
+	for (int i = 0; i < iterations; i++)
+	{
+		float f = FBM(t, octaves, spectrum);
+		if (v < 0.0)
+		{
+			if (f < v)
+				v = f;
+		}
+		else
+		{
+			if (f > v)
+				v = f;
+		}
+		t += 10.0*float3(0.315, 1.781, 3.917);
+	}
+	return pow(abs(v), gamma);
+} KERNEL_P1(MaxMin, iterations)
