@@ -8,6 +8,9 @@ public interface ISpatialNoiseGenerator
 	void Start(Vector3[] points, int steps);
 	bool Update();
 	float[] Output();
+	void Reset();
+	bool Done { get; }
+	bool Started { get; }
 }
 
 public class FBMGPU : ISpatialNoiseGenerator
@@ -46,12 +49,13 @@ public class FBMGPU : ISpatialNoiseGenerator
 	}
 	
 	public bool Done { get { return (stepIndex >= stepsCount); } }
+	public bool Started { get { return (stepIndex >= 0); } }
 	public int StepIndex { get { return stepIndex; } }
 	public int StepsCount { get { return stepsCount; } }
 	
 	public bool Update()
 	{
-		if (!Done)
+		if (!Done && Started)
 		{
 			PrepareBuffers();
 			Dispatch();
@@ -107,11 +111,18 @@ public class FBMGPU : ISpatialNoiseGenerator
 			outputValues[stepIndex + i*stepsCount] = stepValues[i];
 	}
 	
+	public virtual void Reset()
+	{
+		stepIndex = -1;
+		inputPoints = new Vector3[0] {};
+		outputValues = new float[0] {};
+	}
+	
 	protected int method = 0;
 	protected ComputeShader gpuProgram;
 	protected int THREADGROUPSIZE = 64; // must be the same as THREADGROUPSIZE in fbmgpu_base.cginc
 	
-	protected int stepIndex = 0;
+	protected int stepIndex = -1;
 	protected int stepsCount;
 	protected int currentStepSize;
 	

@@ -28,4 +28,14 @@ public static class Utils
 			i32 = asInt32;
 		}
 	}
+	
+	public static void Assert(bool condition, string message)
+	{
+		if (!condition)
+		{
+			Debug.LogError("Assertion failed: " + message);
+			Debug.Break();
+		}
+	}
 }
+

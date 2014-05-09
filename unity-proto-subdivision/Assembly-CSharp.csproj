@@ -80,6 +80,7 @@
      <Compile Include="Assets\Resources\LibNoise.Unity\Properties\AssemblyInfo.cs" />
      <Compile Include="Assets\Resources\LibNoise.Unity\Utils.cs" />
      <Compile Include="Assets\Scripts\FBMGPUDisplayTest.cs" />
+     <Compile Include="Assets\Scripts\GeosurfaceTest.cs" />
      <Compile Include="Assets\Scripts\ProceduralGPUTextureDisplay.cs" />
      <Compile Include="Assets\Scripts\ProceduralTextureDisplay.cs" />
      <Compile Include="Assets\Scripts\UGeosphere.cs" />

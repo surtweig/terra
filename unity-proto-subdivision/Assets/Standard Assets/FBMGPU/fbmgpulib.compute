@@ -23,14 +23,14 @@ KERNEL(FBM)
 float Hybrid (float3 p, int octaves, SPECTRUM spectrum)
 {
 	float3 t = p;
-	float v = (0.7+perlin(p));//(1.0 - abs(perlin(p)));
+	float v = (0.8+perlin(p));//(1.0 - abs(perlin(p)));
 	float w = v;
 	
 	for (int octave = 1; octave < octaves; octave++)
 	{
 		if (w > 1.0) w = 1.0;
 		
-		float a = 0.7+perlin(t) * spectrum[octave];
+		float a = 0.8+perlin(t) * spectrum[octave];
 		v += w*a;
 		w *= a;
 		t *= 2.0;
