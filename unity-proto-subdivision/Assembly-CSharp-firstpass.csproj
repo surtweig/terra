@@ -46,6 +46,7 @@
   <ItemGroup>
      <Compile Include="Assets\Standard Assets\FBMGPU\fbmgpu.cs" />
      <Compile Include="Assets\Standard Assets\Geosphere\Geosphere.cs" />
+     <Compile Include="Assets\Standard Assets\Scripts\Math3d.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\PerlinMultiFractal.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\PerlinNoise.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\Utils.cs" />

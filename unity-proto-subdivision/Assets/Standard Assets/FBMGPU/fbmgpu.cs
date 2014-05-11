@@ -123,7 +123,7 @@ public class FBMGPU : ISpatialNoiseGenerator
 	protected int THREADGROUPSIZE = 64; // must be the same as THREADGROUPSIZE in fbmgpu_base.cginc
 	
 	protected int stepIndex = -1;
-	protected int stepsCount;
+	protected int stepsCount = 1;
 	protected int currentStepSize;
 	
 	protected Vector3[] inputPoints;

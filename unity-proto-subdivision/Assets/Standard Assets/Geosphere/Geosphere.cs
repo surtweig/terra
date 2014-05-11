@@ -93,18 +93,19 @@ public class DummyNoiseGenerator : ISpatialNoiseGenerator
 	
 	public bool Update()
 	{
-		return true;
+		return Done;
 	}
 	
 	public float[] Output()
 	{
+		Debug.Log("pointsNumber = " + pointsNumber);
 		float[] output = new float[pointsNumber];
 		for (int i = 0; i < output.Length; i++)
 			output[i] = 0f;
 		return output;
 	}
 	
-	public bool Done { get { return true; } }
+	public bool Done { get { return (pointsNumber >= 0); } }
 	public bool Started { get { return (pointsNumber >= 0); } }
 	
 	public void Reset()
@@ -120,23 +121,41 @@ public class GeoSurface
 	protected List<GeoTriTreeNode> tritree; 
 	protected int triTreeRootSize = 0; // number of first basic TriTree nodes
 	protected List<MeshContainer> meshContainers;
+	protected List<Color[]> textures;
+	
+	protected int[][] trianglePairs;
+	protected int[] triangleToPairsMap;
 	
 	public ISpatialNoiseGenerator Noise;
+	public ISpatialNoiseGenerator[] TexNoises;
 	public int TargetSubdivisionLevel = 0;
 	public int NoiseGenFrames = 32;
 	public float NoiseScale = 1f;
 	public float NoiseSpaceScale = 1f;
+	public int TextureSize = 1024;
+	public int TexNoiseGenFrames = 32;
 	
 	private Thread subdivideThread;
 	private Thread applyNoiseThread;
 	private Thread buildMeshThread;
+	private Thread texLoadGeneratorThread;
+	private Thread texColorizeThread;
 
 	private bool subdivided = false;
 	private bool noiseApplied = false;
 	private bool meshBuilt = false;
+	private int texGeneratorLoaded = -1;
+	private int texGeneratorDone = -1;
+	private int texColorized = -1;
+	private bool texturesGenerated = false;
+	
+	private bool threadsShouldStop = false;
 	
 	private List<Vector3> noiseInput;
 	private float[] noiseOutput;
+	
+	private Vector3[] texNoiseInput;
+	private float[][] texNoiseOutput;
 
 	public GeoSurface()
 	{
@@ -144,9 +163,13 @@ public class GeoSurface
 		tritree = new List<GeoTriTreeNode>();
 		meshContainers = new List<MeshContainer>();
 		Noise = new DummyNoiseGenerator();
+		TexNoises = new ISpatialNoiseGenerator[1] { new DummyNoiseGenerator() };
 		subdivideThread = new Thread(this.SubdivideThreadProc);
 		applyNoiseThread = new Thread(this.ApplyNoiseThreadProc);
 		buildMeshThread = new Thread(this.BuildMeshThreadProc);
+		texLoadGeneratorThread = new Thread(this.TexLoadGeneratorThreadProc);
+		texColorizeThread = new Thread(this.TexColorizeThreadProc);
+		textures = new List<Color[]>();
 	}
 	
 	~GeoSurface()
@@ -156,12 +179,15 @@ public class GeoSurface
 	
 	public void StopThreads()
 	{
-		if (subdivideThread.IsAlive)
+		/*if (subdivideThread.IsAlive)
 			subdivideThread.Interrupt();
 		if (applyNoiseThread.IsAlive)
 			applyNoiseThread.Interrupt();
 		if (buildMeshThread.IsAlive)
 			buildMeshThread.Interrupt();
+		if (generateUVThread.IsAlive)
+			generateUVThread.Interrupt();*/
+		threadsShouldStop = true;
 	}
 	
 	public bool StartBuilding()
@@ -180,15 +206,28 @@ public class GeoSurface
 	
 	public Mesh GetMesh(int meshIndex)
 	{
-		if (meshIndex >= 0 && meshIndex < meshContainers.Count)
-			return meshContainers[meshIndex].MakeMesh();
-		else
+		if (meshIndex < 0 || meshIndex >= meshContainers.Count)
 			return null;
+		return meshContainers[meshIndex].MakeMesh();
 	}
 	
-	public virtual bool IsInProgress { get { return subdivideThread.IsAlive || applyNoiseThread.IsAlive || (Noise.Started && !Noise.Done); } }
+	public Texture2D GetTexture(int meshIndex)
+	{
+		if (meshIndex < 0 || meshIndex >= meshContainers.Count)
+			return null;
+		int texIndex = triangleToPairsMap[meshIndex];
+		Texture2D tex = new Texture2D(TextureSize, TextureSize);
+		tex.SetPixels(textures[texIndex]);
+		tex.wrapMode = TextureWrapMode.Clamp;
+		return tex;
+	}
 	
-	public virtual bool Done { get { return !IsInProgress && subdivided && noiseApplied && meshBuilt; } }
+	public virtual bool IsInProgress
+		{ get { return subdivideThread.IsAlive || applyNoiseThread.IsAlive || texColorizeThread.IsAlive || texLoadGeneratorThread.IsAlive || (Noise.Started && !Noise.Done); } }
+	
+	public virtual bool Done { get { return !IsInProgress && subdivided && noiseApplied && meshBuilt && texturesGenerated; } }
+	
+	public virtual float TexturesProgress { get { return (float)texColorized/(float)(trianglePairs.Length); } }
 	
 	public virtual Vector3 NormalizePoint(Vector3 point)
 	{
@@ -206,15 +245,31 @@ public class GeoSurface
 		Debug.Log("GeoSurface.Subdivide thread start");
 		// Subdividing
 		for (int triTreeNode = 0; triTreeNode < triTreeRootSize; triTreeNode++)
+		{
 			Subdivide(triTreeNode, TargetSubdivisionLevel);
+			
+			if (threadsShouldStop)
+			{
+				Debug.Log("!!! GeoSurface.Subdivide thread abort");
+				return;
+			}
+		}
 		
 		// Collecting points
 		noiseInput = new List<Vector3>();
 		foreach (GeoNode node in nodes)
+		{
 			if (!node.transformed)
 				noiseInput.Add(node.position * NoiseSpaceScale);
+			
+			if (threadsShouldStop)
+			{
+				Debug.Log("!!! GeoSurface.Subdivide thread abort");
+				return;
+			}
+		}
 		
-		Debug.Log("  GeoSurface.Subdivide thread finish");
+		Debug.Log(">> GeoSurface.Subdivide thread finish");
 		subdivided = true;
 	}
 
@@ -225,17 +280,25 @@ public class GeoSurface
 
 		// Applying generated noise
 		for (int i = 0; i < nodes.Count; i++)
+		{
 			if ( !nodes[i].transformed )
 			{
 				nodes[i].elevation = noiseOutput[i]*NoiseScale;
 				nodes[i].position = ElevatePoint(nodes[i].position, nodes[i].elevation);
 				nodes[i].transformed = true;
 			}
+			
+			if (threadsShouldStop)
+			{
+				Debug.Log("!!! GeoSurface.ApplyNoise thread abort");
+				return;
+			}
+		}
 		
 		noiseInput.Clear();
 		noiseOutput = new float[0] {};
 		
-		Debug.Log("  GeoSurface.ApplyNoise thread finish");
+		Debug.Log(">> GeoSurface.ApplyNoise thread finish");
 		noiseApplied = true;
 	}
 	
@@ -251,51 +314,167 @@ public class GeoSurface
 		meshContainers.Clear();
 		for (int triTreeNode = 0; triTreeNode < triTreeRootSize; triTreeNode++)
 		{
-			MutableGeoMesh mutablemesh = new MutableGeoMesh();
-			CollectVertexes(mutablemesh, triTreeNode);
-			mutablemesh.IndexTriangles();
-			
-			List<Vector3> vertices = new List<Vector3>();
-			List<Vector2> uv = new List<Vector2>();
-			List<Vector3> normals = new List<Vector3>();
-			
-			foreach (int nodeIndex in mutablemesh.indexes)
+			meshContainers.Add(BuildTriTreeNodeMesh(triTreeNode));
+
+			if (threadsShouldStop)
 			{
-				vertices.Add(nodes[nodeIndex].position);
-				normals.Add(nodes[nodeIndex].normal);
+				Debug.Log("!!! GeoSurface.BuildMesh thread abort");
+				return;
 			}
-			
-			MeshContainer meshContainer = new MeshContainer();
-			meshContainer.vertices = vertices.ToArray();
-			meshContainer.normals = normals.ToArray();
-			meshContainer.triangles = mutablemesh.triangles.ToArray();
-			
-			meshContainers.Add(meshContainer);
 		}
 		
-		Debug.Log("  GeoSurface.BuildMesh thread finish");
+		Debug.Log(">> GeoSurface.BuildMesh thread finish");
 		meshBuilt = true;
 	}
 	
+	protected virtual void TexLoadGeneratorThreadProc()
+	{
+		Debug.Log("GeoSurface.TexLoadGenerator thread start");
+		if (TexNoises.Length > 0)
+		{
+			texNoiseInput = new Vector3[TextureSize*TextureSize];
+			int[] tripair =  trianglePairs[texGeneratorLoaded+1];
+			for (int x = 0; x < TextureSize; x++)
+			{
+				if (threadsShouldStop)
+				{
+					Debug.Log("!!! GeoSurface.TexLoadGenerator thread abort");
+					return;
+				}
+				for (int y = 0; y < TextureSize; y++)
+					texNoiseInput[y*TextureSize + x] = GetVertexPositionFromUV(new Vector2((float)x/(float)TextureSize, (float)y/(float)TextureSize), tripair[0], tripair[1]);
+			}
+			texGeneratorLoaded++;
+		}
+		Debug.Log(">> GeoSurface.TexLoadGenerator thread finish");
+	}
+	
+	protected virtual void TexColorizeThreadProc()
+	{
+		Debug.Log("GeoSurface.TexColorize thread start");
+		if (TexNoises.Length > 0)
+		{
+			Color[] tex = new Color[TextureSize*TextureSize];
+			for (int i = 0; i < TextureSize*TextureSize; i++)
+			{
+				float[] values = new float[texNoiseOutput.Length];
+				for (int j = 0; j < texNoiseOutput.Length; j++)
+					values[j] = texNoiseOutput[j][i];
+				tex[i] = Colorize(values);
+				if (threadsShouldStop)
+				{
+					Debug.Log("!!! GeoSurface.TexColorize thread abort");
+					return;
+				}
+			}
+			textures.Add(tex);
+			texColorized++;
+			Debug.Log("texColorized = " + texColorized);
+		}
+		Debug.Log(">> GeoSurface.TexColorize thread finish");
+	}
+	
+	protected virtual Color Colorize(float[] noiseValues)
+	{
+		float c = Mathf.Clamp( (noiseValues[0]+1f)*0.5f, 0f, 1f);
+		return new Color(c, c, c);
+	}
+
 	public virtual bool Update()
 	{
 		if (subdivided)
 		{
+			// start surface noise
 			if ( !Noise.Started )
 				Noise.Start(noiseInput.ToArray(), NoiseGenFrames);
-
+			
+			// proceed surface noise
 			if ( Noise.Update() && !applyNoiseThread.IsAlive && !noiseApplied )
 			{
+				// start applying noise to the geometry
 				noiseOutput = Noise.Output();
 				applyNoiseThread.Start();
 			}
+			
+			// Textures generating //
+			if (TexNoises.Length > 0 && texColorized < (trianglePairs.Length-1) )
+			{
+				// create input points for FBMGPU generators
+				if ( texGeneratorLoaded <= texColorized && texGeneratorLoaded < (trianglePairs.Length-1) && !texLoadGeneratorThread.IsAlive )
+				{
+					texLoadGeneratorThread = new Thread(this.TexLoadGeneratorThreadProc);
+					texLoadGeneratorThread.Start();
+				}
+				
+				// start FBMGPUs if loaded
+				if ( texGeneratorLoaded > texColorized && texGeneratorLoaded > texGeneratorDone)
+				{
+					foreach (ISpatialNoiseGenerator texNoise in TexNoises)
+						if (!texNoise.Started)
+							texNoise.Start(texNoiseInput, TexNoiseGenFrames);
+				}
+			
+				// update FBMGPUs
+				bool allTexNoiseDone = true;
+				foreach (ISpatialNoiseGenerator texNoise in TexNoises)
+					if ( !texNoise.Update() )
+						allTexNoiseDone = false;
+				
+				// take FBMGPUs output if they're done and previous texture has been colorized
+				if (allTexNoiseDone && !texColorizeThread.IsAlive)
+				{
+					texNoiseOutput = new float[TexNoises.Length][];
+					for (int i = 0; i < TexNoises.Length; i++)
+					{
+						texNoiseOutput[i] = TexNoises[i].Output();
+						TexNoises[i].Reset();
+					}
+					
+					texGeneratorDone++;
+					texColorizeThread = new Thread(this.TexColorizeThreadProc);
+					texColorizeThread.Start();
+				}
+			}
+			
+			if (texColorized == (trianglePairs.Length-1))
+				texturesGenerated = true;
 		}
+		
 		if (noiseApplied)
 		{
 			if ( !buildMeshThread.IsAlive && !meshBuilt )
 				buildMeshThread.Start();
 		}
+		
 		return Done;
+	}
+	
+	public MeshContainer BuildTriTreeNodeMesh(int triTreeNode)
+	{
+		MutableGeoMesh mutablemesh = new MutableGeoMesh();
+		CollectVertexes(mutablemesh, triTreeNode);
+		mutablemesh.IndexTriangles();
+		
+		List<Vector3> vertices = new List<Vector3>();
+		List<Vector2> uv = new List<Vector2>();
+		List<Vector3> normals = new List<Vector3>();
+		
+		int[] triTreeNodesPair = GetTriTreeNodePair(triTreeNode);
+		
+		foreach (int nodeIndex in mutablemesh.indexes)
+		{
+			vertices.Add(nodes[nodeIndex].position);
+			normals.Add(nodes[nodeIndex].normal);
+			uv.Add(GetVertexUV(nodes[nodeIndex].position, triTreeNodesPair[0], triTreeNodesPair[1]));
+		}
+		
+		MeshContainer meshContainer = new MeshContainer();
+		meshContainer.vertices = vertices.ToArray();
+		meshContainer.normals = normals.ToArray();
+		meshContainer.triangles = mutablemesh.triangles.ToArray();
+		meshContainer.uv = uv.ToArray();
+		
+		return meshContainer;
 	}
 	
 	protected void BuildNormals()
@@ -361,6 +540,73 @@ public class GeoSurface
 		}
 	}
 	
+	protected virtual Vector2 GetVertexUV(Vector3 position, int triA, int triB)
+	{
+		return new Vector2(0f, 0f);
+	}
+	
+	protected virtual Vector3 GetVertexPositionFromUV(Vector2 uv, int triA, int triB)
+	{
+		return new Vector3(0f, 0f, 0f);
+	}
+	
+	// This function should return an ordered pair of TriTree nodes indexes, which share one texture
+	protected virtual int[] GetTriTreeNodePair(int triTreeNode)
+	{
+		Utils.Assert(triTreeNode < triTreeRootSize, "GeoSurface.GetTriTreeNodePair: triangle pair can be generated for a root triangle only");
+		return trianglePairs[triangleToPairsMap[triTreeNode]];
+	}
+	
+	//    iC1_________iB
+	//      /\        /
+	//     /  \ triB /
+	//    /    \    /
+	//   / triA \  /
+	//  /________\/
+	// iA        iC2
+	protected void GetQuadVertices(int triA, int triB, out int iA, out int iB, out int iC1, out int iC2)
+	{
+		List<int> C1C2 = new List<int>();
+		
+		iA = -1;
+		iB = -1;
+		
+		bool comm;
+		for (int i = 0; i < 3; i++)
+		{
+			comm = false;
+			
+			for (int j = 0; j < 3; j++)
+			{
+				if (tritree[triA].vertices[i] == tritree[triB].vertices[j])
+				{
+					comm = true;
+					break;
+				}
+			}
+
+			if (comm)
+				C1C2.Add(tritree[triA].vertices[i]);
+			else
+				iA = tritree[triA].vertices[i];
+		}
+		
+		for (int i = 0; i < 3; i++)
+			if ( !C1C2.Contains(tritree[triB].vertices[i]) )
+				iB = tritree[triB].vertices[i];
+		
+		if (C1C2.Count == 2)
+		{
+			iC1 = C1C2[0];
+			iC2 = C1C2[1];
+		}
+		else
+		{
+			iC1 = -1;
+			iC2 = -1;
+		}
+	}
+	
 	protected int xAddNode(GeoNode node)
 	{
 		int i = nodes.Count;
@@ -390,8 +636,6 @@ public class GeoSurface
 		else
 			newNode.level = 0;
 		
-		//if (!addedToChildren && parentNode >= 0)
-		//	Debug.LogError("Geosphere.GeoSurface.xAddTriTreeNode : can't add new tritree node to parentNode " + parentNode + " - it has 4 children already");
 		Utils.Assert( addedToChildren || parentNode < 0, "Geosphere.GeoSurface.xAddTriTreeNode : can't add new tritree node to parentNode " + parentNode + " - it has 4 children already");
 		
 		tritree.Add(newNode);
@@ -504,6 +748,8 @@ public class GeoSphere : GeoSurface
 	public GeoSphere() : base()
 	{
 		triTreeRootSize = IcosahedronTriangles;
+		trianglePairs = IcosahedronTrianglePairs;
+		triangleToPairsMap = IcosahedronTriangleToPairsMap;
 		BuildIcosahedron();
 	}
 	
@@ -520,8 +766,9 @@ public class GeoSphere : GeoSurface
 	// -------------------------------------------------------
 	public const int IcosahedronTriangles = 20;
 	
-	public static int[,] IcosahedronTrianglePairs = new int[IcosahedronTriangles/2, 2]
-		{ {0, 1}, {2, 3}, {15, 4}, {14, 5}, {19, 6}, {16, 7}, {12, 8}, {18, 9}, {13, 10}, {17, 11} };
+	public static int[][] IcosahedronTrianglePairs = new int[IcosahedronTriangles/2][]
+		{ new int[2] {0, 1}, new int[2] {2, 3}, new int[2] {15, 4}, new int[2] {14, 5}, new int[2] {19, 6}, 
+		  new int[2] {16, 7}, new int[2] {12, 8}, new int[2] {18, 9}, new int[2] {13, 10}, new int[2] {17, 11} };
 	
 	public static int[] IcosahedronTriangleToPairsMap = new int[IcosahedronTriangles]
 		{ 0, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 6, 8, 3, 2, 5, 9, 7, 4 };
@@ -557,7 +804,97 @@ public class GeoSphere : GeoSurface
 		
 		for (int i = 0; i < icotris.Length; i++)
 			xAddTriTreeNode(icotris[i]);
-	}	
+	}
+	
+	protected override Vector2 GetVertexUV (Vector3 position, int triA, int triB)
+	{
+		int iA;
+		int iB;
+		int iC1;
+		int iC2;
+		GetQuadVertices(triA, triB, out iA, out iB, out iC1, out iC2);
+		Utils.Assert(iA >= 0 && iB >= 0 && iC1 >= 0 && iC2 >= 0, "GeoSphere.GetVertexUV: triA ("+triA+") and triB ("+triB+") must have exactly one common side");
+		
+		Vector3 vA =  NormalizePoint(nodes[iA].position);
+		Vector3 vB =  NormalizePoint(nodes[iB].position);
+		Vector3 vC1 = NormalizePoint(nodes[iC1].position);
+		Vector3 vC2 = NormalizePoint(nodes[iC2].position);
+		Vector3 p =   NormalizePoint(position);		
+		
+		Plane planeA = new Plane(vA, vC1, vC2);
+		Plane planeB = new Plane(vB, vC2, vC1);
+
+		Vector3 nA = planeA.normal;
+		Vector3 nB = planeB.normal;
+		
+		if (Vector3.Dot(nA, vA) < 0f)
+		{
+			nA = -nA;
+			nB = -nB;
+		}
+		
+		//Plane planeUV = new Plane( (nA+nB).normalized, vA );
+		Vector3 nAB = (nA+nB).normalized;
+		
+		Vector3 pA = Math3d.ProjectPointOnPlane(nAB, vA, vA, vA);
+		//Vector3 pB = Math3d.ProjectPointOnPlane(nAB, vA, vB, vB);
+		Vector3 pC1 = Math3d.ProjectPointOnPlane(nAB, vA, vC1, vC1);
+		Vector3 pC2 = Math3d.ProjectPointOnPlane(nAB, vA, vC2, vC2);
+		Vector3 pP = Math3d.ProjectPointOnPlane(nAB, vA, p, p);
+		
+		float u = Math3d.PointLineDistance(pP, pA, (pC1-pA).normalized) / (pA-pC2).magnitude;
+		float v = Math3d.PointLineDistance(pP, pA, (pC2-pA).normalized) / (pA-pC1).magnitude;
+		
+		return new Vector2(u*1.5f, v*1.5f); // i have no idea why 1.5 works
+	}
+
+	protected override Vector3 GetVertexPositionFromUV(Vector2 uv, int triA, int triB)
+	{
+		int iA;
+		int iB;
+		int iC1;
+		int iC2;
+		GetQuadVertices(triA, triB, out iA, out iB, out iC1, out iC2);
+		Utils.Assert(iA >= 0 && iB >= 0 && iC1 >= 0 && iC2 >= 0, "GeoSphere.GetVertexPositionFromUV: triA ("+triA+") and triB ("+triB+") must have exactly one common side");
+		
+		Vector3 vA =  NormalizePoint(nodes[iA].position);
+		Vector3 vB =  NormalizePoint(nodes[iB].position);
+		Vector3 vC1 = NormalizePoint(nodes[iC1].position);
+		Vector3 vC2 = NormalizePoint(nodes[iC2].position);
+		
+		float u = uv.x;
+		float v = uv.y;
+		
+		Plane planeA = new Plane(vA, vC1, vC2);
+		Plane planeB = new Plane(vB, vC2, vC1);
+
+		Vector3 nA = planeA.normal;
+		Vector3 nB = planeB.normal;
+		
+		if (Vector3.Dot(nA, vA) < 0f)
+		{
+			nA = -nA;
+			nB = -nB;
+		}
+		
+		Vector3 nAB = (nA+nB).normalized;
+		
+		Vector3 pA = Math3d.ProjectPointOnPlane(nAB, vA, vA, vA);
+		Vector3 pB = Math3d.ProjectPointOnPlane(nAB, vA, vB, vB);
+		Vector3 pC1 = Math3d.ProjectPointOnPlane(nAB, vA, vC1, vC1);
+		Vector3 pC2 = Math3d.ProjectPointOnPlane(nAB, vA, vC2, vC2);
+		
+		Vector3 pAC1 = Vector3.Lerp(pA, pC1, v);
+		Vector3 pC2B = Vector3.Lerp(pC2, pB, v);
+		
+		return Vector3.Lerp(pAC1, pC2B, u).normalized;
+	}
+	
+	protected override Color Colorize(float[] noiseValues)
+	{
+		float c = Mathf.Clamp( noiseValues[0], 0f, 2.5f) / 2.5f;
+		return new Color(c, c, c);
+	}
 }
 
 
