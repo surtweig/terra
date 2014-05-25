@@ -15,11 +15,17 @@ public class GeosurfaceTest : MonoBehaviour {
 	public int NoiseGenFrames;
 	public int TextureSize;
 	public string TexMethodName;
+	public int TexNoiseOctaves;
+	public float TexNoisePersistence;
+	public int TexNoiseIterations;
+	public float TexNoiseSpaceScale;
 	public GameObject GeosphereRegionPrefab;
+	public ComputeShader NormalMapGPUProgram;
 	
 	private GeoSphere geo;
 	private FBMGPU fbmgpu;
 	private FBMGPU texfbmgpu;
+	private GPUTextureProcessor nmapgpu;
 	private bool imageBuilt = false;
 	private List<GameObject> regions = new List<GameObject>();
 
@@ -27,13 +33,31 @@ public class GeosurfaceTest : MonoBehaviour {
 	
 	void Start ()
 	{
+		/*switch (QualitySettings.GetQualityLevel())
+		{
+			case 0:
+				TextureSize = 512;
+				SubdivisionLevel = 6;
+				break;
+			case 1:
+				TextureSize = 512;
+				SubdivisionLevel = 7;
+				break;
+			case 2:
+				TextureSize = 1024;
+				SubdivisionLevel = 7;
+				break;
+		}*/
+		
 		fbmgpu = new FBMGPU(FBMGPUProgram, MethodName);
 		fbmgpu.Setup(NoiseOctaves, NoisePersistence);
 		fbmgpu.Iterations = NoiseIterations;
 		
 		texfbmgpu = new FBMGPU(FBMGPUProgram, TexMethodName);
-		texfbmgpu.Setup(NoiseOctaves, NoisePersistence);
-		texfbmgpu.Iterations = NoiseIterations;
+		texfbmgpu.Setup(TexNoiseOctaves, TexNoisePersistence);
+		texfbmgpu.Iterations = TexNoiseIterations;
+		
+		nmapgpu = new GPUTextureProcessor(NormalMapGPUProgram, "NormalMap3x3", 1, 1, 3);
 
 		geo = new GeoSphere();
 		geo.Noise = fbmgpu;
@@ -41,9 +65,12 @@ public class GeosurfaceTest : MonoBehaviour {
 		geo.NoiseGenFrames = NoiseGenFrames;
 		geo.TargetSubdivisionLevel = SubdivisionLevel;
 		geo.NoiseSpaceScale = NoiseSpaceScale;
+		geo.TexNoiseSpaceScale = TexNoiseSpaceScale;
 		
 		geo.TexNoises[0] = texfbmgpu;
 		geo.TextureSize = TextureSize;
+		
+		geo.NormalMapGenerator = nmapgpu;
 		
 		ProgressText = GameObject.Find("ProgressText").GetComponent<GUIText>() as GUIText;
 		

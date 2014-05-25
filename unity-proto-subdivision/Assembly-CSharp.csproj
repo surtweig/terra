@@ -81,6 +81,7 @@
      <Compile Include="Assets\Resources\LibNoise.Unity\Utils.cs" />
      <Compile Include="Assets\Scripts\FBMGPUDisplayTest.cs" />
      <Compile Include="Assets\Scripts\GeosurfaceTest.cs" />
+     <Compile Include="Assets\Scripts\NormalMapGPUTest.cs" />
      <Compile Include="Assets\Scripts\ProceduralGPUTextureDisplay.cs" />
      <Compile Include="Assets\Scripts\ProceduralTextureDisplay.cs" />
      <Compile Include="Assets\Scripts\UGeosphere.cs" />
@@ -92,6 +93,7 @@
      <None Include="Assets\attenuation.shader" />
      <None Include="Assets\Standard Assets\Projectors\Sources\Shaders\Projector Light.shader" />
      <None Include="Assets\FladderakDiffuse.shader" />
+     <None Include="Assets\Standard Assets\GPUSignalProcessing\NormalMapGPU.compute" />
      <None Include="Assets\defferedprepass.shader" />
      <None Include="Assets\Resources\LibNoise.Unity\COPYING.LESSER.txt" />
      <None Include="Assets\Standard Assets\FBMGPU\fbmgpu_simple.compute" />

@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
      <Compile Include="Assets\Standard Assets\FBMGPU\fbmgpu.cs" />
+     <Compile Include="Assets\Standard Assets\GPUSignalProcessing\GPUSignalProcessing.cs" />
      <Compile Include="Assets\Standard Assets\Geosphere\Geosphere.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\Math3d.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\PerlinMultiFractal.cs" />
@@ -58,6 +59,7 @@
      <None Include="Assets\attenuation.shader" />
      <None Include="Assets\Standard Assets\Projectors\Sources\Shaders\Projector Light.shader" />
      <None Include="Assets\FladderakDiffuse.shader" />
+     <None Include="Assets\Standard Assets\GPUSignalProcessing\NormalMapGPU.compute" />
      <None Include="Assets\defferedprepass.shader" />
      <None Include="Assets\Resources\LibNoise.Unity\COPYING.LESSER.txt" />
      <None Include="Assets\Standard Assets\FBMGPU\fbmgpu_simple.compute" />

@@ -122,6 +122,7 @@ public class GeoSurface
 	protected int triTreeRootSize = 0; // number of first basic TriTree nodes
 	protected List<MeshContainer> meshContainers;
 	protected List<Color[]> textures;
+	protected List<Color[]> normalMaps;
 	
 	protected int[][] trianglePairs;
 	protected int[] triangleToPairsMap;
@@ -134,12 +135,17 @@ public class GeoSurface
 	public float NoiseSpaceScale = 1f;
 	public int TextureSize = 1024;
 	public int TexNoiseGenFrames = 32;
+	public float TexNoiseSpaceScale = 1f;
+	
+	public int TexFilterOverlap = 1;
+	public GPUTextureProcessor NormalMapGenerator;
 	
 	private Thread subdivideThread;
 	private Thread applyNoiseThread;
 	private Thread buildMeshThread;
 	private Thread texLoadGeneratorThread;
 	private Thread texColorizeThread;
+	private Thread normalMapColorizeThread;
 
 	private bool subdivided = false;
 	private bool noiseApplied = false;
@@ -148,6 +154,9 @@ public class GeoSurface
 	private int texGeneratorDone = -1;
 	private int texColorized = -1;
 	private bool texturesGenerated = false;
+	private int normalMapsGenerated = -1;
+	private int normalMapsColorized = -1;
+	private bool allNormalMapsDone = false;
 	
 	private bool threadsShouldStop = false;
 	
@@ -156,6 +165,8 @@ public class GeoSurface
 	
 	private Vector3[] texNoiseInput;
 	private float[][] texNoiseOutput;
+	private List<float[]> heightMapsCache;
+	private float[] normalMapGeneratorOutput;
 
 	public GeoSurface()
 	{
@@ -170,6 +181,10 @@ public class GeoSurface
 		texLoadGeneratorThread = new Thread(this.TexLoadGeneratorThreadProc);
 		texColorizeThread = new Thread(this.TexColorizeThreadProc);
 		textures = new List<Color[]>();
+		heightMapsCache = new List<float[]>();
+		NormalMapGenerator = null;
+		normalMaps = new List<Color[]>();
+		normalMapColorizeThread = new Thread(this.NormalMapsColorizeThreadProc);
 	}
 	
 	~GeoSurface()
@@ -217,15 +232,16 @@ public class GeoSurface
 			return null;
 		int texIndex = triangleToPairsMap[meshIndex];
 		Texture2D tex = new Texture2D(TextureSize, TextureSize);
-		tex.SetPixels(textures[texIndex]);
+		//tex.SetPixels(textures[texIndex]);
+		tex.SetPixels(normalMaps[texIndex]);
 		tex.wrapMode = TextureWrapMode.Clamp;
 		return tex;
 	}
 	
 	public virtual bool IsInProgress
-		{ get { return subdivideThread.IsAlive || applyNoiseThread.IsAlive || texColorizeThread.IsAlive || texLoadGeneratorThread.IsAlive || (Noise.Started && !Noise.Done); } }
+		{ get { return subdivideThread.IsAlive || applyNoiseThread.IsAlive || texColorizeThread.IsAlive || texLoadGeneratorThread.IsAlive || normalMapColorizeThread.IsAlive || (Noise.Started && !Noise.Done); } }
 	
-	public virtual bool Done { get { return !IsInProgress && subdivided && noiseApplied && meshBuilt && texturesGenerated; } }
+	public virtual bool Done { get { return !IsInProgress && subdivided && noiseApplied && meshBuilt && texturesGenerated && allNormalMapsDone; } }
 	
 	public virtual float TexturesProgress { get { return (float)texColorized/(float)(trianglePairs.Length); } }
 	
@@ -250,7 +266,7 @@ public class GeoSurface
 			
 			if (threadsShouldStop)
 			{
-				Debug.Log("!!! GeoSurface.Subdivide thread abort");
+				Debug.Log("GeoSurface.Subdivide thread abort !!!");
 				return;
 			}
 		}
@@ -264,12 +280,12 @@ public class GeoSurface
 			
 			if (threadsShouldStop)
 			{
-				Debug.Log("!!! GeoSurface.Subdivide thread abort");
+				Debug.Log("GeoSurface.Subdivide thread abort !!!");
 				return;
 			}
 		}
 		
-		Debug.Log(">> GeoSurface.Subdivide thread finish");
+		Debug.Log("GeoSurface.Subdivide thread finish <<");
 		subdivided = true;
 	}
 
@@ -290,7 +306,7 @@ public class GeoSurface
 			
 			if (threadsShouldStop)
 			{
-				Debug.Log("!!! GeoSurface.ApplyNoise thread abort");
+				Debug.Log("GeoSurface.ApplyNoise thread abort !!!");
 				return;
 			}
 		}
@@ -298,7 +314,7 @@ public class GeoSurface
 		noiseInput.Clear();
 		noiseOutput = new float[0] {};
 		
-		Debug.Log(">> GeoSurface.ApplyNoise thread finish");
+		Debug.Log("GeoSurface.ApplyNoise thread finish <<");
 		noiseApplied = true;
 	}
 	
@@ -318,12 +334,12 @@ public class GeoSurface
 
 			if (threadsShouldStop)
 			{
-				Debug.Log("!!! GeoSurface.BuildMesh thread abort");
+				Debug.Log("GeoSurface.BuildMesh thread abort !!!");
 				return;
 			}
 		}
 		
-		Debug.Log(">> GeoSurface.BuildMesh thread finish");
+		Debug.Log("GeoSurface.BuildMesh thread finish <<");
 		meshBuilt = true;
 	}
 	
@@ -332,21 +348,31 @@ public class GeoSurface
 		Debug.Log("GeoSurface.TexLoadGenerator thread start");
 		if (TexNoises.Length > 0)
 		{
-			texNoiseInput = new Vector3[TextureSize*TextureSize];
+			int widthWithOverlap = TextureSize + 2*TexFilterOverlap;
+			int sizeWithOverlap = widthWithOverlap*widthWithOverlap;
+			
+			texNoiseInput = new Vector3[sizeWithOverlap];
 			int[] tripair =  trianglePairs[texGeneratorLoaded+1];
-			for (int x = 0; x < TextureSize; x++)
+			int tri_iA;
+			int tri_iB;
+			int tri_iC1;
+			int tri_iC2;
+			GetQuadVertices(tripair[0], tripair[1], out tri_iA, out tri_iB, out tri_iC1, out tri_iC2);
+			
+			for (int x = 0; x < widthWithOverlap; x++)
 			{
 				if (threadsShouldStop)
 				{
-					Debug.Log("!!! GeoSurface.TexLoadGenerator thread abort");
+					Debug.Log("GeoSurface.TexLoadGenerator thread abort !!!");
 					return;
 				}
-				for (int y = 0; y < TextureSize; y++)
-					texNoiseInput[y*TextureSize + x] = GetVertexPositionFromUV(new Vector2((float)x/(float)TextureSize, (float)y/(float)TextureSize), tripair[0], tripair[1]);
+				for (int y = 0; y < widthWithOverlap; y++)
+					texNoiseInput[y*widthWithOverlap + x] = 
+						TexNoiseSpaceScale * GetVertexPositionFromUV(new Vector2((float)(x-TexFilterOverlap)/(float)TextureSize, (float)(y-TexFilterOverlap)/(float)TextureSize), tri_iA, tri_iB, tri_iC1, tri_iC2);
 			}
 			texGeneratorLoaded++;
 		}
-		Debug.Log(">> GeoSurface.TexLoadGenerator thread finish");
+		Debug.Log("GeoSurface.TexLoadGenerator thread finish <<");
 	}
 	
 	protected virtual void TexColorizeThreadProc()
@@ -355,29 +381,78 @@ public class GeoSurface
 		if (TexNoises.Length > 0)
 		{
 			Color[] tex = new Color[TextureSize*TextureSize];
-			for (int i = 0; i < TextureSize*TextureSize; i++)
+			
+			int widthWithOverlap = TextureSize + 2*TexFilterOverlap;
+			int sizeWithOverlap = widthWithOverlap*widthWithOverlap;
+			float[] heightMap = new float[sizeWithOverlap];
+			
+			for (int i = 0; i < sizeWithOverlap; i++)
 			{
 				float[] values = new float[texNoiseOutput.Length];
 				for (int j = 0; j < texNoiseOutput.Length; j++)
 					values[j] = texNoiseOutput[j][i];
-				tex[i] = Colorize(values);
+				
+				if (i < tex.Length)
+					tex[i] = new Color(1f, 0f, 1f);
+				
+				int x = i % widthWithOverlap;
+				int y = i / widthWithOverlap;
+				
+				if (x >= TexFilterOverlap && x < TextureSize+TexFilterOverlap &&
+					y >= TexFilterOverlap && y < TextureSize+TexFilterOverlap)
+				{
+					tex[ (x-TexFilterOverlap) + (y-TexFilterOverlap)*TextureSize ] = Colorize(values);
+				}
+				heightMap[i] = HeightMap(values);
+				
 				if (threadsShouldStop)
 				{
-					Debug.Log("!!! GeoSurface.TexColorize thread abort");
+					Debug.Log("GeoSurface.TexColorize thread abort !!!");
 					return;
 				}
 			}
+			heightMapsCache.Add(heightMap);
 			textures.Add(tex);
 			texColorized++;
 			Debug.Log("texColorized = " + texColorized);
 		}
-		Debug.Log(">> GeoSurface.TexColorize thread finish");
+		Debug.Log("GeoSurface.TexColorize thread finish <<");
+	}
+	
+	protected virtual void NormalMapsColorizeThreadProc()
+	{
+		Debug.Log("GeoSurface.NormalMapsColorize thread start normalMapGeneratorOutput: " + normalMapGeneratorOutput.Length + " nmap: " + (TextureSize*TextureSize) );
+		Color[] nmap = new Color[TextureSize*TextureSize];
+		for (int i = 0; i < nmap.Length; i++)
+		{
+			Vector3 n = new Vector3(normalMapGeneratorOutput[i*3], normalMapGeneratorOutput[i*3+1], normalMapGeneratorOutput[i*3+2]);
+			nmap[i] = ColorizeNormal(n);
+
+			if (threadsShouldStop)
+			{
+				Debug.Log("GeoSurface.NormalMapsColorize thread abort !!!");
+				return;
+			}
+		}
+		normalMaps.Add(nmap);
+		normalMapsColorized++;
+		Debug.Log("GeoSurface.NormalMapsColorize thread finish << normalMapsColorized = " + normalMapsColorized);
 	}
 	
 	protected virtual Color Colorize(float[] noiseValues)
 	{
 		float c = Mathf.Clamp( (noiseValues[0]+1f)*0.5f, 0f, 1f);
 		return new Color(c, c, c);
+	}
+	
+	protected virtual float HeightMap(float[] noiseValues)
+	{
+		return noiseValues[0];
+	}
+	
+	protected virtual Color ColorizeNormal(Vector3 normal)
+	{
+		return new Color(normal.x*0.5f + 0.5f, normal.y*0.5f + 0.5f, normal.z*0.5f + 0.5f);
 	}
 
 	public virtual bool Update()
@@ -438,6 +513,34 @@ public class GeoSurface
 			
 			if (texColorized == (trianglePairs.Length-1))
 				texturesGenerated = true;
+			
+			// Normal maps generating //
+			if (NormalMapGenerator != null && normalMapsColorized < texColorized)
+			{
+				// Start normal map generator
+				if (normalMapsGenerated < texColorized && !NormalMapGenerator.IsStarted)
+				{
+					NormalMapGenerator.SetInput(heightMapsCache[normalMapsGenerated+1], 128);
+					NormalMapGenerator.Start();
+				}
+				
+				// Update normal map generator
+				if ( NormalMapGenerator.Update() )
+				{
+					// Start colorizing normal map if NormalMapGenerator is done
+					if (!normalMapColorizeThread.IsAlive)
+					{
+						normalMapsGenerated++;
+						normalMapGeneratorOutput = NormalMapGenerator.GetOutput();
+						normalMapColorizeThread = new Thread(this.NormalMapsColorizeThreadProc);
+						normalMapColorizeThread.Start();
+						NormalMapGenerator.Reset();
+					}
+				}
+			}
+			
+			if (normalMapsColorized == (trianglePairs.Length-1) || NormalMapGenerator == null)
+				allNormalMapsDone = true;
 		}
 		
 		if (noiseApplied)
@@ -545,7 +648,7 @@ public class GeoSurface
 		return new Vector2(0f, 0f);
 	}
 	
-	protected virtual Vector3 GetVertexPositionFromUV(Vector2 uv, int triA, int triB)
+	protected virtual Vector3 GetVertexPositionFromUV(Vector2 uv, int iA, int iB, int iC1, int iC2)
 	{
 		return new Vector3(0f, 0f, 0f);
 	}
@@ -553,7 +656,7 @@ public class GeoSurface
 	// This function should return an ordered pair of TriTree nodes indexes, which share one texture
 	protected virtual int[] GetTriTreeNodePair(int triTreeNode)
 	{
-		Utils.Assert(triTreeNode < triTreeRootSize, "GeoSurface.GetTriTreeNodePair: triangle pair can be generated for a root triangle only");
+		Utils.Assert(triTreeNode < triTreeRootSize, "GeoSurface.GetTriTreeNodePair: triangle pair can be generated for a root triangles only");
 		return trianglePairs[triangleToPairsMap[triTreeNode]];
 	}
 	
@@ -848,14 +951,14 @@ public class GeoSphere : GeoSurface
 		return new Vector2(u*1.5f, v*1.5f); // i have no idea why 1.5 works
 	}
 
-	protected override Vector3 GetVertexPositionFromUV(Vector2 uv, int triA, int triB)
+	protected override Vector3 GetVertexPositionFromUV(Vector2 uv, int iA, int iB, int iC1, int iC2)
 	{
-		int iA;
+		/*int iA;
 		int iB;
 		int iC1;
 		int iC2;
 		GetQuadVertices(triA, triB, out iA, out iB, out iC1, out iC2);
-		Utils.Assert(iA >= 0 && iB >= 0 && iC1 >= 0 && iC2 >= 0, "GeoSphere.GetVertexPositionFromUV: triA ("+triA+") and triB ("+triB+") must have exactly one common side");
+		Utils.Assert(iA >= 0 && iB >= 0 && iC1 >= 0 && iC2 >= 0, "GeoSphere.GetVertexPositionFromUV: triA ("+triA+") and triB ("+triB+") must have exactly one common side");*/
 		
 		Vector3 vA =  NormalizePoint(nodes[iA].position);
 		Vector3 vB =  NormalizePoint(nodes[iB].position);
@@ -884,16 +987,21 @@ public class GeoSphere : GeoSurface
 		Vector3 pC1 = Math3d.ProjectPointOnPlane(nAB, vA, vC1, vC1);
 		Vector3 pC2 = Math3d.ProjectPointOnPlane(nAB, vA, vC2, vC2);
 		
-		Vector3 pAC1 = Vector3.Lerp(pA, pC1, v);
-		Vector3 pC2B = Vector3.Lerp(pC2, pB, v);
+		Vector3 pAC1 = Utils.VectorLerpUnclamped(pA, pC1, v);
+		Vector3 pC2B = Utils.VectorLerpUnclamped(pC2, pB, v);
 		
-		return Vector3.Lerp(pAC1, pC2B, u).normalized;
+		return Utils.VectorLerpUnclamped(pAC1, pC2B, u).normalized;
 	}
 	
 	protected override Color Colorize(float[] noiseValues)
 	{
-		float c = Mathf.Clamp( noiseValues[0], 0f, 2.5f) / 2.5f;
-		return new Color(c, c, c);
+		float fmin = -0.7f;
+		float fmax = 0.7f;
+		float c = (Mathf.Clamp( noiseValues[0], fmin, fmax) - fmin) / (fmax-fmin);
+		//Color col = Color.Lerp( new Color(0.49f, 0.378f, 0.6f), new Color(0.65f, 0.46f, 0.33f), 1f-c );
+		Color col = Color.Lerp( new Color(c, c, c), new Color(0.65f, 0.46f, 0.33f), 1f-c );
+		return col;
+		//return new Color(c, c, c);
 	}
 }
 

@@ -12,6 +12,7 @@ public static class Utils
 			return 1 - 0.5f*Mathf.Pow(2f*(1f-x), p);
 	}
 	
+	/*
 	[StructLayout(LayoutKind.Explicit)] 
 	public struct FloatInt32
 	{
@@ -28,6 +29,7 @@ public static class Utils
 			i32 = asInt32;
 		}
 	}
+	*/
 	
 	public static void Assert(bool condition, string message)
 	{
@@ -36,6 +38,11 @@ public static class Utils
 			Debug.LogError("Assertion failed: " + message);
 			Debug.Break();
 		}
+	}
+	
+	public static Vector3 VectorLerpUnclamped(Vector3 vFrom, Vector3 vTo, float t)
+	{
+		return vFrom*(1f-t) + vTo*t;
 	}
 }
 

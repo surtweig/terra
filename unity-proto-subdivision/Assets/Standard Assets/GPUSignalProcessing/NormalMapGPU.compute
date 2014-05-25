@@ -1,0 +1,77 @@
+﻿#define THREADGROUPSIZE 16
+
+#pragma kernel k_NormalMap3x3
+
+RWStructuredBuffer<float> InputSignal;
+RWStructuredBuffer<float> OutputSignal;
+
+int InputSampleSize;
+int OutputSampleSize;
+int TexWidth;
+int ChunkWidth;
+
+[numthreads(THREADGROUPSIZE,THREADGROUPSIZE,1)]
+void k_NormalMap3x3(uint3 id : SV_DispatchThreadID)
+{
+	int inpos = id.x + 1 + (id.y+1)*(ChunkWidth+2);
+	int outpos = id.x + id.y*ChunkWidth;
+	
+	float c = InputSignal[inpos];
+	int dY = ChunkWidth+2;
+	int dX = 1;
+	float nscale = 10.0;
+	float sscale = 0.01;
+	
+	float3 n = float3(0.0, 0.0, 0.0);
+
+	// newell
+	/*
+	float3 verts[9];
+	
+	// 0 1 2
+  	// 7 8 3
+	// 6 5 4
+	
+	
+	verts[0] = float3( -nscale, sscale*InputSignal[inpos - dX - dY], nscale);
+	verts[1] = float3(  0.0, sscale*InputSignal[inpos - dY], nscale);
+	verts[2] = float3(  nscale, sscale*InputSignal[inpos + dX - dY], nscale);
+
+	verts[3] = float3( -nscale, sscale*InputSignal[inpos - dX], 0.0);
+	verts[4] = float3(  0.0, sscale*InputSignal[inpos], 0.0);
+	verts[5] = float3(  nscale, sscale*InputSignal[inpos + dX], 0.0);
+
+	verts[6] = float3( -nscale, sscale*InputSignal[inpos - dX + dY], -nscale);
+	verts[7] = float3(  0.0, sscale*InputSignal[inpos - 0  + dY], -nscale);
+	verts[8] = float3(  nscale, sscale*InputSignal[inpos + dX + dY], -nscale);
+
+	for (uint v = 0; v < 9; v++)
+	{
+		uint vnext = (v+1) % 9;
+		n.x += ( verts[v].y - verts[vnext].y ) * ( verts[v].z + verts[vnext].z );
+		n.y += ( verts[v].z - verts[vnext].z ) * ( verts[v].x + verts[vnext].x );
+		n.z += ( verts[v].x - verts[vnext].x ) * ( verts[v].y + verts[vnext].y );
+	}
+	*/
+	
+	// sobel
+	float tl = InputSignal[inpos - dX - dY];
+	float t =  InputSignal[inpos - dY];
+	float tr = InputSignal[inpos + dX - dY];
+	float r =  InputSignal[inpos + dX];
+	float br = InputSignal[inpos + dX + dY];
+	float b =  InputSignal[inpos + dY];
+	float bl = InputSignal[inpos - dX + dY];
+	float l =  InputSignal[inpos - dX];
+	
+	n.x = (tr + 2.0 * r + br) - (tl + 2.0 * l + bl);
+	n.y = (bl + 2.0 * b + br) - (tl + 2.0 * t + tr);
+	n.z = 1.0/nscale;
+	
+	n = normalize(n);
+	//n = float3(c, c, c);
+	
+	OutputSignal[outpos*3] = n.x;
+	OutputSignal[outpos*3+1] = n.y;
+	OutputSignal[outpos*3+2] = n.z;
+}

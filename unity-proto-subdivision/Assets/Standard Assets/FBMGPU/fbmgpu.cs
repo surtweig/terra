@@ -37,7 +37,7 @@ public class FBMGPU : ISpatialNoiseGenerator
 	public float Gamma = 1f;
 	public int Iterations = 1;
 
-	public void Start(Vector3[] points, int steps = 1)
+	public void Start(Vector3[] points, int steps)
 	{
 		inputPoints = points;
 		outputValues = new float[inputPoints.Length];
