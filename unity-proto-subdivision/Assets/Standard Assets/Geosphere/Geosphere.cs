@@ -235,7 +235,17 @@ public class GeoSurface
 			return null;
 		int texIndex = triangleToPairsMap[meshIndex];
 		Texture2D tex = new Texture2D(TextureSize, TextureSize);
-		//tex.SetPixels(textures[texIndex]);
+		tex.SetPixels(textures[texIndex]);
+		tex.wrapMode = TextureWrapMode.Clamp;
+		return tex;
+	}
+	
+	public Texture2D GetNormalMap(int meshIndex)
+	{
+		if (meshIndex < 0 || meshIndex >= meshContainers.Count)
+			return null;
+		int texIndex = triangleToPairsMap[meshIndex];
+		Texture2D tex = new Texture2D(TextureSize, TextureSize);
 		tex.SetPixels(normalMaps[texIndex]);
 		tex.wrapMode = TextureWrapMode.Clamp;
 		return tex;
@@ -1011,8 +1021,8 @@ public class GeoSphere : GeoSurface
 	
 	protected override Color Colorize(float[] noiseValues)
 	{
-		float fmin = -0.7f;
-		float fmax = 0.7f;
+		float fmin = 0.0f;
+		float fmax = 1.5f;
 		float c = (Mathf.Clamp( noiseValues[0], fmin, fmax) - fmin) / (fmax-fmin);
 		//Color col = Color.Lerp( new Color(0.49f, 0.378f, 0.6f), new Color(0.65f, 0.46f, 0.33f), 1f-c );
 		Color col = Color.Lerp( new Color(c, c, c), new Color(0.65f, 0.46f, 0.33f), 1f-c );

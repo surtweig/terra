@@ -92,6 +92,10 @@ public class GeosurfaceTest : MonoBehaviour {
 					Texture2D mainTex = geo.GetTexture(meshIndex);
 					regionObject.renderer.material.mainTexture = mainTex;
 					mainTex.Apply();
+					
+					Texture2D normalMap = geo.GetNormalMap(meshIndex);
+					regionObject.renderer.material.SetTexture("_NormalTexture", normalMap);
+					normalMap.Apply();
 				
 					regionObject.transform.parent = transform;
 					regions.Add(regionObject);
