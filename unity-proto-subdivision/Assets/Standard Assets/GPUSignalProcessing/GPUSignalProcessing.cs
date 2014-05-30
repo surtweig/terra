@@ -3,14 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 
-public class GPUSignalProcessor
+public class GPUSignalProcessor<TInput, TOutput>
 {
 	public GPUSignalProcessor(ComputeShader program, string methodName, int in_stride, int out_stride)
 	{
 		gpuProgram = program;
 		methodIndex = gpuProgram.FindKernel("k_"+methodName);
-		inputSignal = new float[] {};
-		outputSignal = new float[] {};
+		inputSignal = new TInput[] {};
+		outputSignal = new TOutput[] {};
 		inputStride = in_stride;
 		outputStride = out_stride;
 	}
@@ -18,9 +18,9 @@ public class GPUSignalProcessor
 	protected ComputeShader gpuProgram;
 	protected int methodIndex;
 	
-	protected float[] inputSignal;
+	protected TInput[] inputSignal;
 	protected int inputStride = 1;
-	protected float[] outputSignal;
+	protected TOutput[] outputSignal;
 	protected int outputStride = 1;
 
 	protected int chunkWidth = 1;
@@ -34,38 +34,37 @@ public class GPUSignalProcessor
 	protected ComputeBuffer inputBuffer;
 	protected ComputeBuffer outputBuffer;
 
-	public virtual void SetInput(float[] signal, int chunkWidth)
+	public virtual void SetInput(TInput[] signal, int chunkWidth)
 	{
 		Debug.Log("SetInput: " + signal.Length);
 		if (currentChunkIndex < 0)
 		{
 			this.chunkWidth = chunkWidth;
-			Utils.Assert(signal.Length % inputStride == 0, "GPUSignalProcessor.setInput : signal.Length must be n*stride");
 			inputSignal = signal;
-			inputSamplesCount = inputSignal.Length / inputStride;
+			inputSamplesCount = inputSignal.Length;
 			chunksCount = Mathf.CeilToInt( (float)inputSamplesCount/(float)ChunkEffectiveSize );
-			outputSignal = new float[ OutputSize*outputStride ];
+			outputSignal = new TOutput[ OutputSize ];
 		}
 	}
 	
-	public virtual float[] GetOutput()
+	public virtual TOutput[] GetOutput()
 	{
 		return outputSignal;
 	}
 	
 	// Default one-dimensional chunk sampler
-	protected virtual float[] InputChunkExtract(int chunkIndex)
+	protected virtual TInput[] InputChunkExtract(int chunkIndex)
 	{
 		int firstPos = chunkIndex*chunkWidth - filterOverlapNegX;
 		int lastPos = (chunkIndex+1)*chunkWidth + filterOverlapPosX - 1;
 		
-		float[] chunk = new float[lastPos - firstPos + 1];
+		TInput[] chunk = new TInput[lastPos - firstPos + 1];
 		Array.Clear(chunk, 0, chunk.Length);
 		
 		return chunk;
 	}
 	
-	protected virtual void OutputChunkMerge(int chunkIndex, float[] chunk)
+	protected virtual void OutputChunkMerge(int chunkIndex, TOutput[] chunk)
 	{
 		
 	}
@@ -114,17 +113,17 @@ public class GPUSignalProcessor
 	public void Reset()
 	{
 		currentChunkIndex = -1;
-		inputSignal = new float[] {};
-		outputSignal = new float[] {};
+		inputSignal = new TInput[] {};
+		outputSignal = new TOutput[] {};
 		chunksCount = 0;
 	}
 	
 	protected virtual void PrepareBuffers()
 	{
-		inputBuffer = new ComputeBuffer(ChunkSize*inputStride, 4); // 32bit float
-		outputBuffer = new ComputeBuffer(ChunkEffectiveSize*outputStride, 4);
+		inputBuffer = new ComputeBuffer(ChunkSize, inputStride*4);
+		outputBuffer = new ComputeBuffer(ChunkEffectiveSize, outputStride*4);
 		
-		float[] chunk = InputChunkExtract(currentChunkIndex);
+		TInput[] chunk = InputChunkExtract(currentChunkIndex);
 		inputBuffer.SetData(chunk);
 	}
 	
@@ -143,14 +142,14 @@ public class GPUSignalProcessor
 
 		gpuProgram.Dispatch(methodIndex, ThreadsX, ThreadsY, ThreadsZ);
 		
-		float[] chunkOut = new float[ChunkEffectiveSize*outputStride];
+		TOutput[] chunkOut = new TOutput[ChunkEffectiveSize];
 		outputBuffer.GetData(chunkOut);
 		OutputChunkMerge(currentChunkIndex, chunkOut);
 	}
 }
 
 
-public class GPUTextureProcessor : GPUSignalProcessor
+public class GPUTextureProcessor<TInput, TOutput> : GPUSignalProcessor<TInput, TOutput>
 {
 	protected int overlapSize;
 	protected int texSize;
@@ -160,11 +159,11 @@ public class GPUTextureProcessor : GPUSignalProcessor
 		this.overlapSize = overlapSize;
 	}
 	
-	public override void SetInput(float[] signal, int chunkWidth)
+	public override void SetInput(TInput[] signal, int chunkWidth)
 	{
 		base.SetInput(signal, chunkWidth);
 		texSize = (int)(Mathf.Sqrt(inputSamplesCount)) - 2*overlapSize;
-		outputSignal = new float[ OutputSize*outputStride ];
+		outputSignal = new TOutput[ OutputSize ];
 	}
 	
 	protected override int ChunkSize { get { return (chunkWidth + 2*overlapSize)*(chunkWidth + 2*overlapSize); } }
@@ -176,7 +175,7 @@ public class GPUTextureProcessor : GPUSignalProcessor
 	protected override int ThreadsX { get { return chunkWidth/THREADGROUPSIZE; } }
 	protected override int ThreadsY { get { return chunkWidth/THREADGROUPSIZE; } }
 	
-	protected override float[] InputChunkExtract(int chunkIndex)
+	protected override TInput[] InputChunkExtract(int chunkIndex)
 	{
 		int inputTexWidth = texSize + 2*overlapSize;
 		int chunksInWidth = Mathf.CeilToInt( (float)texSize/(float)chunkWidth );
@@ -187,8 +186,8 @@ public class GPUTextureProcessor : GPUSignalProcessor
 		int chunkPosX = chunkIndexX * chunkWidth + overlapSize;
 		int chunkPosY = chunkIndexY * chunkWidth + overlapSize;
 		
-		float[] chunk = new float[ ChunkSize * inputStride ];
-		
+		TInput[] chunk = new TInput[ ChunkSize ];
+
 		for (int x = -overlapSize; x < chunkWidth + overlapSize; x++)
 		{
 			for (int y = -overlapSize; y < chunkWidth + overlapSize; y++)
@@ -199,25 +198,21 @@ public class GPUTextureProcessor : GPUSignalProcessor
 				int chunkpos = (y+overlapSize)*(chunkWidth+2*overlapSize) + (x+overlapSize);
 					
 				if (px >= 0 && px < inputTexWidth && py >= 0 && py < inputTexWidth)
-					for (int s = 0; s < inputStride; s++)
+				{
+					if (chunkpos >= chunk.Length || inputpos >= inputSignal.Length || chunkpos < 0 || inputpos < 0)
 					{
-						int ci = chunkpos*inputStride + s;
-						int ii = inputpos*inputStride + s;
-						if (ci >= chunk.Length || ii >= inputSignal.Length || ci < 0 || ii < 0)
-						{
-							Debug.Log("out of range: ci = " + ci + "/" + chunk.Length + " ii = " + ii + "/" + inputSignal.Length);
-						}
-						chunk[ci] = inputSignal[ii];
+						Debug.Log("out of range: chunkpos = " + chunkpos + "/" + chunk.Length + " inputpos = " + inputpos + "/" + inputSignal.Length);
 					}
-				else
-					for (int s = 0; s < inputStride; s++)
-						chunk[chunkpos*inputStride+s] = 0f;
+					chunk[chunkpos] = inputSignal[inputpos];
+				}
+				//else
+				//	chunk[chunkpos] = null;
 			}
 		}
 		return chunk;
 	}
 	
-	protected override void OutputChunkMerge(int chunkIndex, float[] chunk)
+	protected override void OutputChunkMerge(int chunkIndex, TOutput[] chunk)
 	{
 		int chunksInWidth = Mathf.CeilToInt( (float)texSize/(float)chunkWidth );
 		
@@ -229,15 +224,14 @@ public class GPUTextureProcessor : GPUSignalProcessor
 		
 		for (int i = 0; i < chunk.Length; i++)
 		{
-			int s = i % outputStride;
-			int x = (i/outputStride) % chunkWidth;
-			int y = (i/outputStride) / chunkWidth;
+			int x = i % chunkWidth;
+			int y = i / chunkWidth;
 			int outputx = chunkPosX + x;
 			int outputy = chunkPosY + y;
 			float c = 0f;
 			if (outputx % 32 == 0 || outputy % 32 == 0)
 				c = 1f;
-			int outputpos = (outputy*texSize + outputx)*outputStride + s;
+			int outputpos = outputy*texSize + outputx;
 			if (outputpos >= 0 && outputpos < outputSignal.Length)
 				outputSignal[outputpos] = chunk[i];
 		}

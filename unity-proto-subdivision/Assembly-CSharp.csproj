@@ -102,10 +102,6 @@
      <None Include="Assets\Standard Assets\FBMGPU\fbmgpu_iterative.compute" />
      <None Include="Assets\perlingpu.compute" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="Assembly-CSharp-firstpass.csproj">
-      <Project>{FF08558F-785D-C454-8221-EC824D50C7DD}</Project>      <Name>Assembly-CSharp-firstpass</Name>    </ProjectReference>
-  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
 	   Other similar extension points exist, see Microsoft.Common.targets.

@@ -1,6 +1,18 @@
 ﻿<Properties>
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
-  <MonoDevelop.Ide.Workbench />
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\Standard Assets\Geosphere\Geosphere.cs">
+    <Files>
+      <File FileName="Assets\Standard Assets\GPUSignalProcessing\GPUSignalProcessing.cs" Line="209" Column="7" />
+      <File FileName="Assets\Standard Assets\FBMGPU\fbmgpu.cs" Line="1" Column="1" />
+      <File FileName="Assets\Standard Assets\Geosphere\Geosphere.cs" Line="149" Column="2" />
+      <File FileName="Assets\Standard Assets\Scripts\Utils.cs" Line="1" Column="1" />
+      <File FileName="Assets\FladderakDiffuse.shader" Line="1" Column="1" />
+      <File FileName="Assets\Scripts\GeosurfaceTest.cs" Line="51" Column="3" />
+      <File FileName="Assets\Scripts\FBMGPUDisplayTest.cs" Line="25" Column="39" />
+      <File FileName="Assets\Scripts\NormalMapGPUTest.cs" Line="17" Column="52" />
+      <File FileName="Assets\Scripts\UGeosphere.cs" Line="1" Column="1" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.Breakpoints>
     <BreakpointStore />
   </MonoDevelop.Ide.DebuggingService.Breakpoints>

@@ -8,22 +8,22 @@ public class NormalMapGPUTest : MonoBehaviour {
 	public int Width;
 	public string MethodName;
 	
-	private GPUSignalProcessor spgpu;
+	private GPUSignalProcessor<Vector3, Vector3> spgpu;
 	private Color[] texPixels;
 	private bool colorsDone = false;
 	private bool texDone = false;
 	
 	void Start () {
-		spgpu = new GPUTextureProcessor(SignalProcessingGPUProgram, MethodName, 1, 1, 3);
+		spgpu = new GPUTextureProcessor<Vector3, Vector3>(SignalProcessingGPUProgram, MethodName, 1, 3, 3);
 		
-		float[] points = new float[(Width+2)*(Width+2)];
-		for (int x = 0; x < Width; x++)
-			for (int y = 0; y < Width; y++)
+		Vector3[] points = new Vector3[(Width+2)*(Width+2)];
+		for (int x = 0; x < Width+2; x++)
+			for (int y = 0; y < Width+2; y++)
 			{
-				float c = 0f;
-				if (x % 27 == 0 || y % 27 == 0)
-					c = 1f;
-				points[x + y*(Width+2)] = Mathf.Sin( (float)x*0.1f ) + Mathf.Sin( (float)y*0.1f );
+				//float c = 0f;
+				//if (x % 27 == 0 || y % 27 == 0)
+				//	c = 1f;
+				points[x + y*(Width+2)] = (1f + Mathf.Sin( (float)x*0.1f ) * Mathf.Sin( (float)y*0.1f )) * new Vector3( (float)x*0.1f, (float)y*0.1f, 0f );
 			}
 		
 		spgpu.SetInput(points, 128);
@@ -53,10 +53,10 @@ public class NormalMapGPUTest : MonoBehaviour {
 	{
 		Debug.Log("BuildTex");
 		texPixels = new Color[Width*Width];
-		float[] values = spgpu.GetOutput();
+		Vector3[] values = spgpu.GetOutput();
 		for (int i = 0; i < texPixels.Length; i++)
 		{
-			texPixels[i] = new Color(values[i*3], values[i*3+1], values[i*3+2]);
+			texPixels[i] = new Color(values[i].x, values[i].y, values[i].z);
 		}
 		colorsDone = true;
 	}

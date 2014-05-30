@@ -138,7 +138,7 @@ public class GeoSurface
 	public float TexNoiseSpaceScale = 1f;
 	
 	public int TexFilterOverlap = 1;
-	public GPUTextureProcessor NormalMapGenerator;
+	public GPUTextureProcessor<Vector3, Vector3> NormalMapGenerator;
 	
 	private Thread subdivideThread;
 	private Thread applyNoiseThread;
@@ -164,9 +164,10 @@ public class GeoSurface
 	private float[] noiseOutput;
 	
 	private Vector3[] texNoiseInput;
+	private List<Vector3[]> texNoiseInputCache;
 	private float[][] texNoiseOutput;
-	private List<float[]> heightMapsCache;
-	private float[] normalMapGeneratorOutput;
+	private List<Vector3[]> heightMapsCache;
+	private Vector3[] normalMapGeneratorOutput;
 
 	public GeoSurface()
 	{
@@ -181,7 +182,9 @@ public class GeoSurface
 		texLoadGeneratorThread = new Thread(this.TexLoadGeneratorThreadProc);
 		texColorizeThread = new Thread(this.TexColorizeThreadProc);
 		textures = new List<Color[]>();
-		heightMapsCache = new List<float[]>();
+		heightMapsCache = new List<Vector3[]>();
+		texNoiseInputCache = new List<Vector3[]>();
+		//hmtestcache = new List<Vector3>();
 		NormalMapGenerator = null;
 		normalMaps = new List<Color[]>();
 		normalMapColorizeThread = new Thread(this.NormalMapsColorizeThreadProc);
@@ -370,6 +373,7 @@ public class GeoSurface
 					texNoiseInput[y*widthWithOverlap + x] = 
 						TexNoiseSpaceScale * GetVertexPositionFromUV(new Vector2((float)(x-TexFilterOverlap)/(float)TextureSize, (float)(y-TexFilterOverlap)/(float)TextureSize), tri_iA, tri_iB, tri_iC1, tri_iC2);
 			}
+			texNoiseInputCache.Add(texNoiseInput);
 			texGeneratorLoaded++;
 		}
 		Debug.Log("GeoSurface.TexLoadGenerator thread finish <<");
@@ -384,10 +388,12 @@ public class GeoSurface
 			
 			int widthWithOverlap = TextureSize + 2*TexFilterOverlap;
 			int sizeWithOverlap = widthWithOverlap*widthWithOverlap;
-			float[] heightMap = new float[sizeWithOverlap];
+			Vector3[] heightMap = new Vector3[sizeWithOverlap];
+			float[] hmtest = new float[TextureSize*TextureSize];
 			
 			for (int i = 0; i < sizeWithOverlap; i++)
 			{
+				float h;
 				float[] values = new float[texNoiseOutput.Length];
 				for (int j = 0; j < texNoiseOutput.Length; j++)
 					values[j] = texNoiseOutput[j][i];
@@ -402,8 +408,14 @@ public class GeoSurface
 					y >= TexFilterOverlap && y < TextureSize+TexFilterOverlap)
 				{
 					tex[ (x-TexFilterOverlap) + (y-TexFilterOverlap)*TextureSize ] = Colorize(values);
+					//hmtest[ (x-TexFilterOverlap) + (y-TexFilterOverlap)*TextureSize ] = HeightMap(values);
+					h = HeightMap(values);
 				}
-				heightMap[i] = HeightMap(values);
+				else
+					h = 10f;
+				
+				h = HeightMap(values);
+				heightMap[i] = texNoiseInputCache[texColorized+1][i].normalized * (1f + h*NoiseScale);
 				
 				if (threadsShouldStop)
 				{
@@ -412,6 +424,7 @@ public class GeoSurface
 				}
 			}
 			heightMapsCache.Add(heightMap);
+			//hmtestcache.Add(hmtest);
 			textures.Add(tex);
 			texColorized++;
 			Debug.Log("texColorized = " + texColorized);
@@ -425,9 +438,11 @@ public class GeoSurface
 		Color[] nmap = new Color[TextureSize*TextureSize];
 		for (int i = 0; i < nmap.Length; i++)
 		{
-			Vector3 n = new Vector3(normalMapGeneratorOutput[i*3], normalMapGeneratorOutput[i*3+1], normalMapGeneratorOutput[i*3+2]);
-			nmap[i] = ColorizeNormal(n);
-
+			//Vector3 n = new Vector3(normalMapGeneratorOutput[i], normalMapGeneratorOutput[i*3+1], normalMapGeneratorOutput[i*3+2]);
+			nmap[i] = ColorizeNormal(normalMapGeneratorOutput[i]);
+			//float c = hmtest[i];
+			//nmap[i] = Colorize(new float[1] { c });
+			//nmap[i] *= 0.5f;
 			if (threadsShouldStop)
 			{
 				Debug.Log("GeoSurface.NormalMapsColorize thread abort !!!");
@@ -532,6 +547,7 @@ public class GeoSurface
 					{
 						normalMapsGenerated++;
 						normalMapGeneratorOutput = NormalMapGenerator.GetOutput();
+						//hmtest = hmtestcache[normalMapsGenerated];
 						normalMapColorizeThread = new Thread(this.NormalMapsColorizeThreadProc);
 						normalMapColorizeThread.Start();
 						NormalMapGenerator.Reset();

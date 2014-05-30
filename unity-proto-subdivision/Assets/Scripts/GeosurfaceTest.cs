@@ -25,7 +25,7 @@ public class GeosurfaceTest : MonoBehaviour {
 	private GeoSphere geo;
 	private FBMGPU fbmgpu;
 	private FBMGPU texfbmgpu;
-	private GPUTextureProcessor nmapgpu;
+	private GPUTextureProcessor<Vector3, Vector3> nmapgpu;
 	private bool imageBuilt = false;
 	private List<GameObject> regions = new List<GameObject>();
 
@@ -57,7 +57,7 @@ public class GeosurfaceTest : MonoBehaviour {
 		texfbmgpu.Setup(TexNoiseOctaves, TexNoisePersistence);
 		texfbmgpu.Iterations = TexNoiseIterations;
 		
-		nmapgpu = new GPUTextureProcessor(NormalMapGPUProgram, "NormalMap3x3", 1, 1, 3);
+		nmapgpu = new GPUTextureProcessor<Vector3, Vector3>(NormalMapGPUProgram, "NormalMap3x3", 1, 3, 3);
 
 		geo = new GeoSphere();
 		geo.Noise = fbmgpu;
