@@ -25,7 +25,8 @@
 			#include "UnityCG.cginc"
 			#include "AutoLight.cginc"
 
-			sampler2D _DiffuseTexture;
+			sampler2D _MainTex;
+			
 			float4 _DiffuseTint;
 			float4 _LightColor0;
 
@@ -63,7 +64,7 @@
 				float NdotL = pow(max(dot(N, L)-0.01, 0), 0.5);//saturate(dot(N, L));
 				float4 diffuseTerm = NdotL * _LightColor0 * _DiffuseTint * attenuation;
 
-				float4 diffuse = tex2D(_DiffuseTexture, i.uv);
+				float4 diffuse = tex2D(_MainTex, i.uv);
 
 				float4 finalColor = diffuseTerm * diffuse;
 
