@@ -1,6 +1,9 @@
 ﻿#include "fbmgpubase.cginc"
 
+#pragma kernel k_Zero
+#pragma kernel k_One
 #pragma kernel k_FBM
+
 #pragma kernel k_Hybrid
 #pragma kernel k_Turbulence
 #pragma kernel k_FBMAbs
@@ -16,8 +19,9 @@
 int iterations;
 
 
+KERNEL(Zero);
+KERNEL(One);
 KERNEL(FBM)
-
 
 
 float Hybrid (float3 p, int octaves, SPECTRUM spectrum)
@@ -149,8 +153,8 @@ float MaxMin (float3 p, int octaves, SPECTRUM spectrum, int iterations)
 				v = f;
 		}
 		t += 10.0*float3(0.315, 1.781, 3.917);
-	}
-	return pow(abs(v), gamma);
+	} 
+	return sign(v)*pow(abs(v), gamma);
 } KERNEL_P1(MaxMin, iterations)
 
 

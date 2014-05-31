@@ -74,9 +74,15 @@ public class FBMGPU : ISpatialNoiseGenerator
 	
 	protected virtual void PrepareBuffers()
 	{
-		Vector3[] stepPoints = new Vector3[ (inputPoints.Length) / stepsCount ];
+		Vector3[] stepPoints = new Vector3[ Mathf.CeilToInt( (float)inputPoints.Length / (float)stepsCount ) ];
 		for (int i = 0; i < stepPoints.Length; i++)
-			stepPoints[i] = inputPoints[stepIndex + i*stepsCount];
+		{
+			int ii = stepIndex + i*stepsCount;
+			if (ii < inputPoints.Length)
+				stepPoints[i] = inputPoints[ii];
+			else
+				stepPoints[i] = Vector3.zero;
+		}
 		currentStepSize = stepPoints.Length;
 		
 		inputPointsBuffer = new ComputeBuffer(stepPoints.Length, 12); // 3floats x 4bytes
@@ -102,13 +108,16 @@ public class FBMGPU : ISpatialNoiseGenerator
 		gpuProgram.SetInt("baseOctaves", baseSpectrum.Length);
 		gpuProgram.SetFloat("gamma", Gamma);
 		gpuProgram.SetInt("iterations", Iterations);
-
-		gpuProgram.Dispatch(method, currentStepSize/THREADGROUPSIZE, 1, 1);
+		
+		gpuProgram.Dispatch(method, Mathf.CeilToInt( (float)currentStepSize/(float)THREADGROUPSIZE ), 1, 1);
 		
 		float[] stepValues = new float[currentStepSize];
 		outputValuesBuffer.GetData(stepValues);
 		for (int i = 0; i < currentStepSize; i++)
-			outputValues[stepIndex + i*stepsCount] = stepValues[i];
+		{
+			if (stepIndex + i*stepsCount < outputValues.Length)
+				outputValues[stepIndex + i*stepsCount] = stepValues[i];
+		}
 	}
 	
 	public virtual void Reset()

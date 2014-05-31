@@ -371,18 +371,41 @@ public class GeoSurface
 			int tri_iC1;
 			int tri_iC2;
 			GetQuadVertices(tripair[0], tripair[1], out tri_iA, out tri_iB, out tri_iC1, out tri_iC2);
+	
+			int subthreadsFinished = 0;
+			int subthreadsCount = 8;
+			Thread[] subthreads = new Thread[subthreadsCount];
 			
-			for (int x = 0; x < widthWithOverlap; x++)
+			for (int ti = 0; ti < subthreads.Length; ti++)
+			{
+				subthreads[ti] = new Thread(
+					delegate(object subthreadIndex)
+					{
+						for (int i = 0; i < sizeWithOverlap/subthreadsCount; i++)
+						{
+							if (threadsShouldStop)
+								break;
+							int pos = i*subthreadsCount + (int)subthreadIndex;
+							int x = pos % widthWithOverlap;
+							int y = pos / widthWithOverlap;
+							texNoiseInput[pos] = //new Vector3(0f, 0f, 0f);
+								TexNoiseSpaceScale * GetVertexPositionFromUV(new Vector2((float)(x-TexFilterOverlap)/(float)TextureSize, (float)(y-TexFilterOverlap)/(float)TextureSize), tri_iA, tri_iB, tri_iC1, tri_iC2);
+						}
+						subthreadsFinished++;
+					}
+				);
+				subthreads[ti].Start( ti );
+			}
+			
+			while (subthreadsFinished < subthreadsCount)
 			{
 				if (threadsShouldStop)
 				{
 					Debug.Log("GeoSurface.TexLoadGenerator thread abort !!!");
 					return;
 				}
-				for (int y = 0; y < widthWithOverlap; y++)
-					texNoiseInput[y*widthWithOverlap + x] = 
-						TexNoiseSpaceScale * GetVertexPositionFromUV(new Vector2((float)(x-TexFilterOverlap)/(float)TextureSize, (float)(y-TexFilterOverlap)/(float)TextureSize), tri_iA, tri_iB, tri_iC1, tri_iC2);
 			}
+
 			texNoiseInputCache.Add(texNoiseInput);
 			texGeneratorLoaded++;
 		}
@@ -422,7 +445,7 @@ public class GeoSurface
 					h = HeightMap(values);
 				}
 				else
-					h = 10f;
+					h = 0f;
 				
 				h = HeightMap(values);
 				heightMap[i] = texNoiseInputCache[texColorized+1][i].normalized * (1f + h*NoiseScale);
@@ -545,7 +568,7 @@ public class GeoSurface
 				// Start normal map generator
 				if (normalMapsGenerated < texColorized && !NormalMapGenerator.IsStarted)
 				{
-					NormalMapGenerator.SetInput(heightMapsCache[normalMapsGenerated+1], 128);
+					NormalMapGenerator.SetInput(heightMapsCache[normalMapsGenerated+1], 256);
 					NormalMapGenerator.Start();
 				}
 				
@@ -1021,13 +1044,18 @@ public class GeoSphere : GeoSurface
 	
 	protected override Color Colorize(float[] noiseValues)
 	{
-		float fmin = 0.0f;
-		float fmax = 1.5f;
+		float fmin = -0.7f;
+		float fmax = 0.7f;
 		float c = (Mathf.Clamp( noiseValues[0], fmin, fmax) - fmin) / (fmax-fmin);
 		//Color col = Color.Lerp( new Color(0.49f, 0.378f, 0.6f), new Color(0.65f, 0.46f, 0.33f), 1f-c );
-		Color col = Color.Lerp( new Color(c, c, c), new Color(0.65f, 0.46f, 0.33f), 1f-c );
-		return col;
+		
+		// frozen mars
+		//Color col = Color.Lerp( new Color(c, c, c), new Color(0.65f, 0.46f, 0.33f), Mathf.Pow(1f-c, 0.75f) );
+		
+		Color col = Color.Lerp( new Color(0.7f, 0.7f, 0.7f), new Color(0.9f, 0.7f, 0.5f), 1f-Mathf.Pow(1f-c, 0.75f) );
 		//return new Color(c, c, c);
+		
+		return col;
 	}
 }
 

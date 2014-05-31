@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 
 public class GeosurfaceTest : MonoBehaviour {
 	
@@ -21,6 +22,7 @@ public class GeosurfaceTest : MonoBehaviour {
 	public float TexNoiseSpaceScale;
 	public GameObject GeosphereRegionPrefab;
 	public ComputeShader NormalMapGPUProgram;
+	public bool SaveTextures;
 	
 	private GeoSphere geo;
 	private FBMGPU fbmgpu;
@@ -52,10 +54,12 @@ public class GeosurfaceTest : MonoBehaviour {
 		fbmgpu = new FBMGPU(FBMGPUProgram, MethodName);
 		fbmgpu.Setup(NoiseOctaves, NoisePersistence);
 		fbmgpu.Iterations = NoiseIterations;
+		fbmgpu.Gamma = 2f;
 		
 		texfbmgpu = new FBMGPU(FBMGPUProgram, TexMethodName);
 		texfbmgpu.Setup(TexNoiseOctaves, TexNoisePersistence);
 		texfbmgpu.Iterations = TexNoiseIterations;
+		texfbmgpu.Gamma = 2f;
 		
 		nmapgpu = new GPUTextureProcessor<Vector3, Vector3>(NormalMapGPUProgram, "NormalMap3x3", 1, 3, 3);
 
@@ -97,6 +101,14 @@ public class GeosurfaceTest : MonoBehaviour {
 					regionObject.renderer.material.SetTexture("_NormalTexture", normalMap);
 					normalMap.Apply();
 				
+					if (SaveTextures)
+					{
+						byte[] png = mainTex.EncodeToPNG();
+						File.WriteAllBytes(Application.dataPath + "/../Output/diffuse" + meshIndex + ".png", png);
+						png = normalMap.EncodeToPNG();
+						File.WriteAllBytes(Application.dataPath + "/../Output/normal" + meshIndex + ".png", png);
+					}
+
 					regionObject.transform.parent = transform;
 					regions.Add(regionObject);
 				}

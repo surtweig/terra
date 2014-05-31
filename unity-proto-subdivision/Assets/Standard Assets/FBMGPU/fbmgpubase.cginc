@@ -176,3 +176,14 @@ float3 FBMVector (float3 p, int octaves, SPECTRUM spectrum)
 {
 	return float3(FBM(p, octaves, spectrum), FBM(p+rndvector, octaves, spectrum), FBM(p+2.0*rndvector, octaves, spectrum));
 }
+
+
+float One(float3 p, int octaves, SPECTRUM spectrum)
+{
+	return 1.0;
+}
+
+float Zero(float3 p, int octaves, SPECTRUM spectrum)
+{
+	return 0.0;
+}
