@@ -36,7 +36,6 @@ public class GPUSignalProcessor<TInput, TOutput>
 
 	public virtual void SetInput(TInput[] signal, int chunkWidth)
 	{
-		Debug.Log("SetInput: " + signal.Length);
 		if (currentChunkIndex < 0)
 		{
 			this.chunkWidth = chunkWidth;

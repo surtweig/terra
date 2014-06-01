@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 public static class Utils
 {
@@ -35,14 +36,35 @@ public static class Utils
 	{
 		if (!condition)
 		{
-			Debug.LogError("Assertion failed: " + message);
-			Debug.Break();
+			UnityEngine.Debug.LogError("Assertion failed: " + message);
+			UnityEngine.Debug.Break();
 		}
 	}
 	
 	public static Vector3 VectorLerpUnclamped(Vector3 vFrom, Vector3 vTo, float t)
 	{
 		return vFrom*(1f-t) + vTo*t;
+	}
+	
+	public class StopWatch
+	{
+		private string name;
+		//private float startTime;
+		private System.Diagnostics.Stopwatch diagStopWatch;
+		
+		public StopWatch(string name)
+		{
+			this.name = name;
+			//startTime = Time.realtimeSinceStartup;
+			diagStopWatch = new System.Diagnostics.Stopwatch();
+			diagStopWatch.Start();
+		}
+		
+		public void Stop()
+		{
+			diagStopWatch.Stop();
+			UnityEngine.Debug.Log("Stopwatch " + name + ": " + ((float)diagStopWatch.ElapsedMilliseconds * 0.001) + " sec.");
+		}
 	}
 }
 
