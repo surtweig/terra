@@ -1,0 +1,29 @@
+Geosphere
+	
+	Topology:			GeosphereSurfaceTopology ~30 mb (160k verts 1024x1024 tex)
+	Vertices:			FloatVector3Array (cacheable=false) 163842*3*4 = ~2 mb
+	VerticesNoise:		FloatArray ~0.6 mb
+	Meshes:				MutableMesh[20]
+	SphereFragments:	FloatVector3Array[10] (EMGID=0 global) 3*4*10*1024*1024 = 120mb
+	FragmentsNoise:		FloatArray[10] (cacheable=false) 4*10*1024*1024 = 40mb
+	HeightMaps:			FloatVector3Array[10] (cacheable=false) 3*4*10*1024*1024 = 120mb
+	ColorTextures:		TextureRGB8[10] 3*10*1024*1024 = 30mb
+	Normals:			FloatVector3Array[10] (cacheable=false) 3*4*10*1024*1024 = 120mb
+	NormalTextures:		TextureRGB8[10] 3*10*1024*1024 = 30mb
+	
+	total: 32.6 + 120*3 + 40 + 30*2 = 492.6mb
+	cacheable: 32.6 + 40 + 30 + 30
+	
+	subdivision : -> [Topology]
+	collectVertices : [Topology] -> [Vertices]
+	generateVertexNoise : [Vertices] -> [VerticesNoise] 		// GPU
+	buildMesh[20] : [Vertices, VerticesNoise] -> [Meshes]
+	
+	//collectFragments[10] : [Topology] -> [Fragments]
+	generateFragmentsNoise[10] [SphereFragments] -> [FragmentsNoise] 		// GPU
+	generateColorTexture [10] [FragmentsNoise] -> [ColorTextures]
+	collectHeightMaps [10] [SphereFragments, FragmentsNoise] -> [HeightMaps]
+	generateNormals[10] [HeightMaps] -> [Normals] // GPU
+	generateNormalMaps[10] [Normals] -> [NormalTextures]
+	
+	

@@ -3,6 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 
+// Bailout
+// NoiseScale = 0.005
+// NoiseSpaceScale = 3 
+// NoiseOctaves = 10
+// NoisePersistence = 1.1
+// NoiseIterations = 4
 
 public class GeoNode
 {
@@ -143,6 +149,7 @@ public class GeoSurface
 	protected List<GeoTriTreeNode> tritree; 
 	protected int triTreeRootSize = 0; // number of first basic TriTree nodes
 	protected List<MeshContainer> meshContainers;
+	protected List<MeshContainer> atmMeshContainers;
 	protected List<Color[]> textures;
 	protected List<Color[]> normalMaps;
 	protected List<Texture2D> exportedTextures;
@@ -159,8 +166,11 @@ public class GeoSurface
 	public float NoiseScale = 1f;
 	public float NoiseSpaceScale = 1f;
 	public int TextureSize = 1024;
-	public int TexNoiseGenFrames = 32;
+	public int TexNoiseGenFrames = 64;
 	public float TexNoiseSpaceScale = 1f;
+	public int NormalGenChunkSize = 128;//64;
+	public float AtmosphereRadiusRatio = 1.1f;
+	public bool BuildAtmosphere = true;
 	
 	public int TexFilterOverlap = 1;
 	public GPUTextureProcessor<Vector3, Vector3> NormalMapGenerator;
@@ -172,16 +182,16 @@ public class GeoSurface
 	private Thread texColorizeThread;
 	private Thread normalMapColorizeThread;
 
-	private bool subdivided = false;
-	private bool noiseApplied = false;
-	private bool meshBuilt = false;
-	private int texGeneratorLoaded = -1;
-	private int texGeneratorDone = -1;
-	private int texColorized = -1;
-	private bool texturesGenerated = false;
-	private int normalMapsGenerated = -1;
-	private int normalMapsColorized = -1;
-	private bool allNormalMapsDone = false;
+	private volatile bool subdivided = false;
+	private volatile bool noiseApplied = false;
+	private volatile bool meshBuilt = false;
+	private volatile int texGeneratorLoaded = -1;
+	private volatile int texGeneratorDone = -1;
+	private volatile int texColorized = -1;
+	private volatile bool texturesGenerated = false;
+	private volatile int normalMapsGenerated = -1;
+	private volatile int normalMapsColorized = -1;
+	private volatile bool allNormalMapsDone = false;
 	
 	private bool threadsShouldStop = false;
 	
@@ -201,6 +211,7 @@ public class GeoSurface
 		nodes = new List<GeoNode>();
 		tritree = new List<GeoTriTreeNode>();
 		meshContainers = new List<MeshContainer>();
+		atmMeshContainers = new List<MeshContainer>();
 		Noise = new DummyNoiseGenerator();
 		TexNoises = new ISpatialNoiseGenerator[1] { new DummyNoiseGenerator() };
 		subdivideThread = new Thread(this.SubdivideThreadProc);
@@ -263,6 +274,13 @@ public class GeoSurface
 			return null;
 		return meshContainers[meshIndex].MakeMesh();
 	}
+
+	public Mesh GetAtmoMesh(int meshIndex)
+	{
+		if (meshIndex < 0 || meshIndex >= atmMeshContainers.Count)
+			return null;
+		return atmMeshContainers[meshIndex].MakeMesh();
+	}
 	
 	public Texture2D GetTexture(int meshIndex)
 	{
@@ -304,13 +322,58 @@ public class GeoSurface
 		return exportedNormalMaps[texIndex];
 	}
 	
+	public int debug_surfacegpuloaded
+		{ get { return Noise.Started && !Noise.Done ? 1 : 0; } }
+	
+	public int debug_colorgpuloaded
+		{ get { return TexNoises[0].Started ? 1 : 0; } }
+	
+	public int debug_normalgpuloaded
+		{ get { return NormalMapGenerator.IsStarted ? 1 : 0; } }
+	
 	public virtual bool IsInProgress
 		{ get { return subdivideThread.IsAlive || applyNoiseThread.IsAlive || texColorizeThread.IsAlive || texLoadGeneratorThread.IsAlive || normalMapColorizeThread.IsAlive || (Noise.Started && !Noise.Done); } }
 	
 	public virtual bool Done { get { return !IsInProgress && subdivided && noiseApplied && meshBuilt && texturesGenerated && allNormalMapsDone; } }
 	
 	public virtual float TexturesProgress { get { return (float)texColorized/(float)(trianglePairs.Length); } }
-	
+
+	public int GetTopologySize()
+	{
+		int cnt = 0;
+		for (int i = 0; i < nodes.Count; i++)
+		{
+			//public Vector3 position;
+			//public Vector3 normal;
+			//public float elevation;
+			//public List<int[]> adjacency;
+			//public bool transformed = false;
+			cnt += 4 * (3 + 3 + 1) + 1;
+			for (int j = 0; j < nodes[i].adjacency.Count; j++)
+				cnt += nodes[i].adjacency[j].Length * 4;
+		}
+		for (int i = 0; i < tritree.Count; i++)
+		{
+			cnt += 1;
+			cnt += tritree[i].vertices.Length * 4;
+			cnt += tritree[i].children.Length * 4;
+		}
+
+		//public Vector3[] vertices;
+		//public Vector3[] normals;
+		//public Vector2[] uv;
+		//public int[] triangles;		
+		for (int i = 0; i < meshContainers.Count; i++)
+		{
+			cnt += meshContainers[i].triangles.Length * 4;
+			cnt += meshContainers[i].vertices.Length * 3 * 4;
+			cnt += meshContainers[i].normals.Length * 3 * 4;
+			cnt += meshContainers[i].uv.Length * 2 * 4;
+		}
+
+		return cnt;
+	}
+
 	public virtual Vector3 NormalizePoint(Vector3 point)
 	{
 		return point;
@@ -338,6 +401,9 @@ public class GeoSurface
 				return;
 			}
 		}
+
+		if (BuildAtmosphere)
+			BuildAtmosphereProc();
 		
 		// Collecting points
 		noiseInput = new List<Vector3>();
@@ -388,7 +454,23 @@ public class GeoSurface
 		applyNoiseStopWatch.Stop();
 		noiseApplied = true;
 	}
-	
+
+	protected virtual void BuildAtmosphereProc()
+	{
+		BuildNormals();
+		atmMeshContainers.Clear();
+		for (int triTreeNode = 0; triTreeNode < triTreeRootSize; triTreeNode++)
+		{
+			atmMeshContainers.Add(BuildTriTreeNodeMesh(triTreeNode, AtmosphereRadiusRatio));
+
+			if (threadsShouldStop)
+			{
+				Debug.Log("GeoSurface.BuildAtmosphereProc thread abort !!!");
+				return;
+			}
+		}
+	}
+
 	protected virtual void BuildMeshThreadProc()
 	{
 		meshBuilt = false;
@@ -559,8 +641,9 @@ public class GeoSurface
 								h = 0f;
 							
 							h = HeightMap(values);
-							heightMap[pos] = texNoiseInputCache[texColorized+1][pos].normalized * (1f + h*NoiseScale);						}
-							subthreadsFinished++;
+							heightMap[pos] = texNoiseInputCache[texColorized+1][pos].normalized * (1f + h*NoiseScale);
+						}
+						subthreadsFinished++;
 					}
 				);
 				subthreads[ti].Start( ti );
@@ -632,8 +715,11 @@ public class GeoSurface
 		if (subdivided)
 		{
 			// start surface noise
-			if ( !Noise.Started )
+			if (!Noise.Started)
+			{
 				Noise.Start(noiseInput.ToArray(), NoiseGenFrames);
+				Debug.Log("noiseInput.count = " + noiseInput.Count);
+			}
 			
 			// proceed surface noise
 			if ( Noise.Update() && !applyNoiseThread.IsAlive && !noiseApplied )
@@ -692,7 +778,7 @@ public class GeoSurface
 				// Start normal map generator
 				if (normalMapsGenerated < texColorized && !NormalMapGenerator.IsStarted)
 				{
-					NormalMapGenerator.SetInput(heightMapsCache[normalMapsGenerated+1], 128);
+					NormalMapGenerator.SetInput(heightMapsCache[normalMapsGenerated+1], NormalGenChunkSize);
 					NormalMapGenerator.Start();
 				}
 				
@@ -731,7 +817,7 @@ public class GeoSurface
 		return Done;
 	}
 	
-	public MeshContainer BuildTriTreeNodeMesh(int triTreeNode)
+	public MeshContainer BuildTriTreeNodeMesh(int triTreeNode, float scale = 1f)
 	{
 		MutableGeoMesh mutablemesh = new MutableGeoMesh();
 		CollectVertexes(mutablemesh, triTreeNode);
@@ -745,7 +831,7 @@ public class GeoSurface
 		
 		foreach (int nodeIndex in mutablemesh.indexes)
 		{
-			vertices.Add(nodes[nodeIndex].position);
+			vertices.Add(nodes[nodeIndex].position * scale);
 			normals.Add(nodes[nodeIndex].normal);
 			uv.Add(GetVertexUV(nodes[nodeIndex].position, triangleToPairsMap[triTreeNode]));
 		}
@@ -1182,12 +1268,18 @@ public class GeoSphere : GeoSurface
 	protected override Color Colorize(float[] noiseValues)
 	{
 		float fmin = 0f;
-		float fmax = 1.5f;
+		float fmax = 0.3f; //1.5 waterworld, frozenmars
 		float c = (Mathf.Clamp( noiseValues[0], fmin, fmax) - fmin) / (fmax-fmin);
 		//Color col = Color.Lerp( new Color(0.49f, 0.378f, 0.6f), new Color(0.65f, 0.46f, 0.33f), 1f-c );
 		
 		// frozen mars
-		Color col = Color.Lerp( new Color(c, c, c), new Color(0.65f, 0.46f, 0.33f), Mathf.Pow(1f-c, 0.75f) );
+		//Color col = Color.Lerp( new Color(c, c, c), new Color(0.65f, 0.46f, 0.33f), Mathf.Pow(1f-c, 0.75f) );
+
+		// waterworld
+		//Color col = Color.Lerp(new Color(c*0.8f, 0.8f-c*0.2f, c*0.5f), new Color(0.05f, 0.2f, 0.6f), Mathf.Pow(1f - c, 2f));
+
+		// cloudy neptune
+		Color col = Color.Lerp(new Color(c, c, c), new Color(0.05f, 0.2f, 0.6f), Mathf.Pow(1f - c, 0.25f));
 		
 		//Color col = Color.Lerp( new Color(0.7f, 0.7f, 0.7f), new Color(0.9f, 0.7f, 0.5f), 1f-Mathf.Pow(1f-c, 0.75f) );
 		//return new Color(c, c, c);

@@ -21,8 +21,11 @@ public class GeosurfaceTest : MonoBehaviour {
 	public int TexNoiseIterations;
 	public float TexNoiseSpaceScale;
 	public GameObject GeosphereRegionPrefab;
+	public GameObject AtmosphereRegionPrefab;
 	public ComputeShader NormalMapGPUProgram;
 	public bool SaveTextures;
+	public bool UseNormalMap;
+	public bool BuildAtmosphere;
 	
 	private GeoSphere geo;
 	private FBMGPU fbmgpu;
@@ -30,6 +33,8 @@ public class GeosurfaceTest : MonoBehaviour {
 	private GPUTextureProcessor<Vector3, Vector3> nmapgpu;
 	private bool imageBuilt = false;
 	private List<GameObject> regions = new List<GameObject>();
+	
+	private string debug_out = "#deltaTime\tsurfacegpu\tcolorgpu\tnormalgpu\r\n";
 
 	private GUIText ProgressText;
 	
@@ -70,6 +75,7 @@ public class GeosurfaceTest : MonoBehaviour {
 		geo.TargetSubdivisionLevel = SubdivisionLevel;
 		geo.NoiseSpaceScale = NoiseSpaceScale;
 		geo.TexNoiseSpaceScale = TexNoiseSpaceScale;
+		geo.BuildAtmosphere = BuildAtmosphere;
 		
 		geo.TexNoises[0] = texfbmgpu;
 		geo.TextureSize = TextureSize;
@@ -83,35 +89,56 @@ public class GeosurfaceTest : MonoBehaviour {
 	
 	void Update ()
 	{
+		
+		//debug_out += Time.deltaTime.ToString() + "\t" + geo.debug_surfacegpuloaded + "\t" + (int)geo.debug_colorgpuloaded + "\t" + (int)geo.debug_normalgpuloaded + "\r\n";
+			
 		if (!imageBuilt)
 		{
 			if (geo.Update())
 			{
+				
 				imageBuilt = true;
 				for (int meshIndex = 0; meshIndex < geo.MeshesCount; meshIndex++)
 				{
 					GameObject regionObject = Instantiate(GeosphereRegionPrefab, transform.position, transform.rotation) as GameObject;
 					regionObject.GetComponent<MeshFilter>().mesh = geo.GetMesh(meshIndex);
-				
+					Debug.Log("Verices count:" + regionObject.GetComponent<MeshFilter>().mesh.vertexCount);
+
+					if (BuildAtmosphere)
+					{
+						GameObject atmRegionObject = Instantiate(AtmosphereRegionPrefab, transform.position, transform.rotation) as GameObject;
+						atmRegionObject.GetComponent<MeshFilter>().mesh = geo.GetAtmoMesh(meshIndex);
+						atmRegionObject.transform.parent = transform;
+					}
+
 					Texture2D mainTex = geo.GetTexture(meshIndex);
 					regionObject.renderer.material.mainTexture = mainTex;
 					mainTex.Apply();
 					
-					Texture2D normalMap = geo.GetNormalMap(meshIndex);
-					regionObject.renderer.material.SetTexture("_NormalTexture", normalMap);
-					normalMap.Apply();
+					if (UseNormalMap)
+					{
+						Texture2D normalMap = geo.GetNormalMap(meshIndex);
+						regionObject.renderer.material.SetTexture("_NormalTexture", normalMap);
+						normalMap.Apply();
+						if (SaveTextures)
+						{
+							byte[] png = normalMap.EncodeToPNG();
+							File.WriteAllBytes(Application.dataPath + "/../Output/normal" + meshIndex + ".png", png);
+						}
+					}
 				
 					if (SaveTextures)
 					{
 						byte[] png = mainTex.EncodeToPNG();
 						File.WriteAllBytes(Application.dataPath + "/../Output/diffuse" + meshIndex + ".png", png);
-						png = normalMap.EncodeToPNG();
-						File.WriteAllBytes(Application.dataPath + "/../Output/normal" + meshIndex + ".png", png);
 					}
 
 					regionObject.transform.parent = transform;
+					
 					regions.Add(regionObject);
 				}
+
+				Debug.Log("topo size = " + geo.GetTopologySize());
 			}
 			
 			if (geo.TexturesProgress > 0f)
@@ -123,8 +150,16 @@ public class GeosurfaceTest : MonoBehaviour {
 		transform.RotateAround(new Vector3(0f, 1f, 0f), Time.deltaTime*0.1f);
 	}
 	
+	public void SaveDebugFile()
+	{
+		StreamWriter writer = new StreamWriter(Application.dataPath + "/../Output/debug_out.adv");
+		writer.Write(debug_out);
+		writer.Close();
+	}
+	
 	void OnApplicationQuit()
 	{
 		geo.StopThreads();
+		SaveDebugFile();
 	}
 }
